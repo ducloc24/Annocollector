@@ -78,6 +78,57 @@ class RbacRepository:
         )
         return [(code, limit) for code, limit in rows.tuples()]
 
+    async def active_platform_role_codes(self, user_id: uuid.UUID, now: datetime) -> set[str]:
+        return {role.code for _, role in await self.active_platform_assignments(user_id, now)}
+
+    async def direct_project_roles(
+        self, user_id: uuid.UUID, project_id: uuid.UUID, now: datetime
+    ) -> set[str]:
+        from app.models.project import ProjectMember
+
+        rows = await self.session.scalars(
+            select(Role.code)
+            .join(ProjectMember, ProjectMember.role_id == Role.id)
+            .where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.user_id == user_id,
+                ProjectMember.revoked_at.is_(None),
+                ProjectMember.expires_at.is_(None) | (ProjectMember.expires_at > now),
+            )
+        )
+        return set(rows)
+
+    async def team_project_roles(
+        self, user_id: uuid.UUID, project_id: uuid.UUID, now: datetime
+    ) -> set[str]:
+        from app.models.project import ProjectTeam, Team, TeamMember, TeamStatus
+
+        rows = await self.session.scalars(
+            select(TeamMember.team_role)
+            .join(ProjectTeam, ProjectTeam.team_id == TeamMember.team_id)
+            .join(Team, Team.id == TeamMember.team_id)
+            .where(
+                ProjectTeam.project_id == project_id,
+                ProjectTeam.removed_at.is_(None),
+                Team.status == TeamStatus.ACTIVE,
+                TeamMember.user_id == user_id,
+                TeamMember.removed_at.is_(None),
+                TeamMember.expires_at.is_(None) | (TeamMember.expires_at > now),
+            )
+        )
+        return set(rows)
+
+    async def project_role_grants(self, role_codes: set[str]) -> list[tuple[str, str]]:
+        if not role_codes:
+            return []
+        rows = await self.session.execute(
+            select(Permission.code, RolePermission.limit_scope)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .join(Role, Role.id == RolePermission.role_id)
+            .where(Role.scope == "project", Role.code.in_(role_codes))
+        )
+        return [(code, limit) for code, limit in rows.tuples()]
+
     async def get_assignment(self, assignment_id: uuid.UUID) -> UserPlatformRole | None:
         return await self.session.get(UserPlatformRole, assignment_id)
 

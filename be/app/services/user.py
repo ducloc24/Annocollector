@@ -11,6 +11,7 @@ from app.models.rbac import Role, UserPlatformRole
 from app.models.user import ActionTokenPurpose, User, UserActionToken, UserStatus
 from app.repositories.rbac import RbacRepository
 from app.repositories.user import TokenRepository, UserRepository
+from app.repositories.work import WorkRepository
 from app.services.audit import AuditService
 
 Assignments = list[tuple[UserPlatformRole, Role]]
@@ -49,12 +50,14 @@ class UserService:
         rbac: RbacRepository,
         audit: AuditService,
         clock: Clock = utcnow,
+        work: WorkRepository | None = None,
     ) -> None:
         self.users = users
         self.tokens = tokens
         self.rbac = rbac
         self.audit = audit
         self.clock = clock
+        self.work = work
 
     async def create_user(self, actor: User, data: NewUser) -> tuple[User, ActivationLink]:
         email = data.email.strip().lower()
@@ -155,7 +158,9 @@ class UserService:
         user.token_version += 1
         await self.tokens.revoke_user_refresh_tokens(user.id, now)
         await self.tokens.close_open_action_tokens(user.id, ActionTokenPurpose.ACTIVATE, now)
-        # Build step 5: return the user's open jobs to the pool here.
+        if self.work is not None:
+            await self.users.end_memberships(user.id, now, reason)
+            await self.work.release_jobs(now, user_id=user.id)
         await self.audit.record(
             actor=actor,
             action="user.disable",

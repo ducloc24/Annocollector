@@ -216,6 +216,9 @@ Tiến độ chỉ đếm job `accepted`, không đếm `submitted`.
 | **SLA** | Thời hạn xử lý tối đa cho từng bước (làm, review, nghiệm thu). |
 | **Action endpoint** | Endpoint thực hiện một hành động đổi trạng thái (`POST /jobs/{id}/submit`) thay vì sửa trực tiếp trường `status`. |
 | **`unassigned`** | Trạng thái job trong pool, chưa có người nhận. |
+| **Workspace project** | Trang `/projects/[id]` gom mọi thứ của một project (dữ liệu, cấu hình, task, job, tiến độ) theo tab; tab hiện theo vai trò. |
+| **Checklist thiết lập** | Danh sách bước PO cần làm để project chạy được: guideline, đội, dữ liệu, cấu hình job, task, kích hoạt. |
+| **Màn làm việc** | Màn gán nhãn hoặc màn chấm, chiếm toàn trang, không có menu. |
 | **State machine** | Module duy nhất định nghĩa các trạng thái và chuyển hợp lệ của job hoặc task. Mọi đổi trạng thái đi qua đây. |
 | **Permission resolver** | Thành phần backend trả lời "user này có permission này trên project này không", theo đúng thứ tự kiểm tra quyền. |
 | **Seed** | Dữ liệu khởi tạo đưa vào DB qua migration, ví dụ danh mục role, permission và ma trận quyền. |

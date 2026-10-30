@@ -36,3 +36,6 @@ coverage/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local file storage (dev fallback when R2 is not configured)
+be/.storage/

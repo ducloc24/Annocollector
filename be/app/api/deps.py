@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Annotated, Any
@@ -8,16 +9,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import UnauthorizedError
 from app.core.rbac_catalog import Perm
+from app.core.storage import get_storage
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.audit import AuditRepository
+from app.repositories.project import ProjectRepository
 from app.repositories.rbac import RbacRepository
 from app.repositories.user import TokenRepository, UserRepository
+from app.repositories.work import WorkRepository
 from app.services.audit import AuditService
 from app.services.auth import AuthService
 from app.services.authorization import AuthorizationService
+from app.services.dataset import DatasetService
 from app.services.platform_role import PlatformRoleService
+from app.services.progress import ProgressService
+from app.services.project import ProjectService
+from app.services.task import TaskService
+from app.services.team import TeamService
 from app.services.user import UserService
+from app.services.work import WorkService
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
@@ -63,7 +73,11 @@ AuthorizationDep = Annotated[AuthorizationService, Depends(get_authorization_ser
 
 def get_user_service(session: DbSession, audit: AuditServiceDep) -> UserService:
     return UserService(
-        UserRepository(session), TokenRepository(session), RbacRepository(session), audit
+        UserRepository(session),
+        TokenRepository(session),
+        RbacRepository(session),
+        audit,
+        work=WorkRepository(session),
     )
 
 
@@ -106,4 +120,100 @@ def require_permission(perm: Perm) -> Any:
         return user
 
     checker: Callable[..., Awaitable[User]] = dependency
+    return Depends(checker)
+
+
+# ---------- project scope (build steps 2-7) ----------
+
+
+def get_project_repository(session: DbSession) -> ProjectRepository:
+    return ProjectRepository(session)
+
+
+ProjectRepositoryDep = Annotated[ProjectRepository, Depends(get_project_repository)]
+
+
+def get_work_repository(session: DbSession) -> WorkRepository:
+    return WorkRepository(session)
+
+
+WorkRepositoryDep = Annotated[WorkRepository, Depends(get_work_repository)]
+
+
+def get_project_service(session: DbSession, audit: AuditServiceDep) -> ProjectService:
+    return ProjectService(
+        ProjectRepository(session),
+        WorkRepository(session),
+        UserRepository(session),
+        RbacRepository(session),
+        audit,
+    )
+
+
+ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
+
+
+def get_team_service(session: DbSession, audit: AuditServiceDep) -> TeamService:
+    return TeamService(
+        ProjectRepository(session),
+        WorkRepository(session),
+        UserRepository(session),
+        RbacRepository(session),
+        audit,
+    )
+
+
+TeamServiceDep = Annotated[TeamService, Depends(get_team_service)]
+
+
+def get_dataset_service(session: DbSession, audit: AuditServiceDep) -> DatasetService:
+    return DatasetService(ProjectRepository(session), WorkRepository(session), get_storage(), audit)
+
+
+DatasetServiceDep = Annotated[DatasetService, Depends(get_dataset_service)]
+
+
+def get_task_service(session: DbSession, audit: AuditServiceDep) -> TaskService:
+    return TaskService(ProjectRepository(session), WorkRepository(session), audit)
+
+
+TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
+
+
+def get_work_service(session: DbSession, audit: AuditServiceDep) -> WorkService:
+    return WorkService(ProjectRepository(session), WorkRepository(session), audit)
+
+
+WorkServiceDep = Annotated[WorkService, Depends(get_work_service)]
+
+
+def get_progress_service(session: DbSession, audit: AuditServiceDep) -> ProgressService:
+    return ProgressService(WorkRepository(session), audit)
+
+
+ProgressServiceDep = Annotated[ProgressService, Depends(get_progress_service)]
+
+
+@dataclass(frozen=True)
+class ProjectAccess:
+    user: User
+    project_id: uuid.UUID
+    roles: frozenset[str]
+    limits: frozenset[str]
+
+
+def require_project_permission(perm: Perm | None) -> Any:
+    """Dependency for routes with a ``project_id`` path parameter.
+
+    ``None`` only requires some role in the project (outsiders get 404).
+    """
+
+    async def dependency(
+        project_id: uuid.UUID, user: CurrentUser, authz: AuthorizationDep
+    ) -> ProjectAccess:
+        roles = await authz.require_member(user.id, project_id)
+        limits = await authz.require_project(user.id, project_id, perm) if perm else set()
+        return ProjectAccess(user, project_id, frozenset(roles), frozenset(limits))
+
+    checker: Callable[..., Awaitable[ProjectAccess]] = dependency
     return Depends(checker)

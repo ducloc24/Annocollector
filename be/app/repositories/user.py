@@ -75,6 +75,21 @@ class UserRepository:
         )
         return list(rows), total or 0
 
+    async def end_memberships(self, user_id: uuid.UUID, now: datetime, reason: str) -> None:
+        """Offboarding: close every team and direct project membership of the user."""
+        from app.models.project import ProjectMember, TeamMember
+
+        await self.session.execute(
+            update(TeamMember)
+            .where(TeamMember.user_id == user_id, TeamMember.removed_at.is_(None))
+            .values(removed_at=now, remove_reason=reason, is_lead=False)
+        )
+        await self.session.execute(
+            update(ProjectMember)
+            .where(ProjectMember.user_id == user_id, ProjectMember.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
+
 
 class TokenRepository:
     def __init__(self, session: AsyncSession) -> None:

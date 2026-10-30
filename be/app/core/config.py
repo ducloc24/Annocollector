@@ -65,6 +65,24 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT: int = 10  # attempts per minute per ip + email
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # File storage: Cloudflare R2 when configured, otherwise a local folder (dev only).
+    R2_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_BUCKET: str | None = None
+    LOCAL_STORAGE_DIR: str = str(BASE_DIR / ".storage")
+    API_PUBLIC_URL: str = "http://localhost:8000"
+    MAX_UPLOAD_MB: int = 100
+
+    @property
+    def r2_configured(self) -> bool:
+        return all(
+            (self.R2_ACCOUNT_ID, self.R2_ACCESS_KEY_ID, self.R2_SECRET_ACCESS_KEY, self.R2_BUCKET)
+        ) and not any(
+            "<" in (v or "")
+            for v in (self.R2_ACCOUNT_ID, self.R2_ACCESS_KEY_ID, self.R2_SECRET_ACCESS_KEY)
+        )
+
     @property
     def jwt_secret_key(self) -> str:
         if not self.JWT_SECRET_KEY or len(self.JWT_SECRET_KEY) < 32:

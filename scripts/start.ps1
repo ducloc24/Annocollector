@@ -23,7 +23,8 @@
     .\scripts\start.ps1 -SkipDbCheck -SkipMigrate
 
 .EXAMPLE
-    # Free the ports automatically instead of aborting
+    # Without -Force the script asks y/N before killing a process holding a port.
+    # Free the ports without asking
     .\scripts\start.ps1 -Force
 #>
 [CmdletBinding()]
@@ -205,15 +206,25 @@ function Assert-PortFree([int]$Port, [string]$Label) {
     }
 
     $detail = "port $Port ($Label) is already used by $($owner.Name) (PID $($owner.PID))"
-    if (-not $Force) {
-        Stop-Script "$detail. Stop that process or rerun with -Force."
+    if ($Force) {
+        Write-Warn "$detail - killing it (-Force)"
+    }
+    else {
+        Write-Warn $detail
+        $answer = Read-Host "Kill it and continue? [y/N]"
+        if ($answer -notmatch '^(y|yes)$') {
+            Stop-Script "port $Port is busy. Stop that process or answer 'y' next time."
+        }
     }
 
-    Write-Warn "$detail - killing it (-Force)"
-    cmd.exe /c "taskkill /PID $($owner.PID) /T /F" | Out-Null
+    cmd.exe /c "taskkill /PID $($owner.PID) /T /F" 2>&1 | Out-Null
+    # The listener PID can belong to a dead parent (e.g. uvicorn --reload) whose
+    # orphaned children still hold the socket; kill those by parent PID.
+    Get-CimInstance Win32_Process -Filter "ParentProcessId = $($owner.PID)" -ErrorAction SilentlyContinue |
+        ForEach-Object { cmd.exe /c "taskkill /PID $($_.ProcessId) /T /F" 2>&1 | Out-Null }
     Start-Sleep -Milliseconds 800
     if (Get-PortOwner -Port $Port) {
-        Stop-Script "port $Port is still busy after -Force. Free it manually."
+        Stop-Script "port $Port is still busy after killing PID $($owner.PID). Free it manually."
     }
     Write-Ok "port $Port freed"
 }

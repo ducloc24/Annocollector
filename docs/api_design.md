@@ -15,7 +15,7 @@
 | Mục | Quy ước |
 | --- | --- |
 | Prefix | `/api/v1` (`settings.API_V1_PREFIX`) |
-| Định dạng | JSON; upload file dùng `multipart/form-data` |
+| Định dạng | JSON. File dataset **không** đi qua backend: frontend xin presigned URL rồi `PUT` thẳng lên Cloudflare R2 (mục 3.8) |
 | Xác thực | `Authorization: Bearer <access_token>` (xem mục 2) |
 | ID | uuid |
 | Thời gian | ISO 8601, UTC, ví dụ `2026-10-30T08:15:00Z` |
@@ -193,8 +193,9 @@ dấu cần xử lý).
 
 | Method | Path | Quyền | Story | Mô tả |
 | --- | --- | --- | --- | --- |
-| POST | `/projects/{project_id}/datasets/preview` | `dataset.upload (P)` | PO-05 | Multipart: `file`, `parser`, `parser_options`. Parse vài dòng đầu, trả item mẫu và lỗi. **Không lưu** |
-| POST | `/projects/{project_id}/datasets` | `dataset.upload (P)` | PO-04, PO-05 | Multipart như trên. Parse toàn bộ, tạo dataset version mới. Lỗi quá ngưỡng thì không tạo, trả báo cáo lỗi |
+| POST | `/projects/{project_id}/datasets/upload-url` | `dataset.upload (P)` | PO-04 | Body `{filename, size}`. Trả `{upload_key, url, expires_in}`: presigned URL để `PUT` file lên R2 (hạn 15 phút). Kiểm tra `size` không vượt giới hạn |
+| POST | `/projects/{project_id}/datasets/preview` | `dataset.upload (P)` | PO-05 | Body `{upload_key, parser, parser_options}`. Đọc vài dòng đầu từ R2, trả item mẫu và lỗi. **Không tạo version** |
+| POST | `/projects/{project_id}/datasets` | `dataset.upload (P)` | PO-04, PO-05 | Body như preview. Đọc toàn bộ file từ R2, parse, tạo dataset version mới (lưu `storage_path` = `upload_key`). Lỗi quá ngưỡng thì không tạo, trả báo cáo lỗi |
 | GET | `/projects/{project_id}/datasets` | `dataset.read (P)` hoặc `progress.read (P)` | PO-04 | Danh sách version: số item, checksum, parser |
 | GET | `/projects/{project_id}/datasets/{version}` | `dataset.read (P)` hoặc `progress.read (P)` | PO-04 | Chi tiết version kèm báo cáo parse |
 | GET | `/projects/{project_id}/datasets/{version}/items` | `dataset.read (P)` | PO-04 | Liệt kê item (có `payload`). Annotator và reviewer không dùng endpoint này, họ đọc item qua job |
@@ -343,20 +344,38 @@ Kèm header `Set-Cookie: refresh_token=...; HttpOnly; Secure; SameSite=Strict; P
 
 ### 4.2 Upload dataset với field mapping
 
-```http
-POST /api/v1/projects/{project_id}/datasets
-Content-Type: multipart/form-data
+Bước 1: xin presigned URL.
 
-file=@trajectories.jsonl
-parser=jsonl_chat
-parser_options={
-  "user_message": "$.input",
-  "steps": "$.trace[*]",
-  "step_type": "$.type",
-  "tool_name": "$.name",
-  "tool_args": "$.arguments",
-  "tool_result": "$.output",
-  "tools": "$.tools[*]"
+```json
+POST /api/v1/projects/{project_id}/datasets/upload-url
+{ "filename": "trajectories.jsonl", "size": 52428800 }
+
+200
+{
+  "upload_key": "projects/9a1c.../uploads/3f2e....jsonl",
+  "url": "https://3b825e294fc915fdb8b01779ef494a84.r2.cloudflarestorage.com/annocolector/projects/9a1c.../uploads/3f2e....jsonl?X-Amz-Signature=...",
+  "expires_in": 900
+}
+```
+
+Bước 2: frontend `PUT` file lên `url` (không qua backend).
+
+Bước 3: tạo dataset version.
+
+```json
+POST /api/v1/projects/{project_id}/datasets
+{
+  "upload_key": "projects/9a1c.../uploads/3f2e....jsonl",
+  "parser": "jsonl_chat",
+  "parser_options": {
+    "user_message": "$.input",
+    "steps": "$.trace[*]",
+    "step_type": "$.type",
+    "tool_name": "$.name",
+    "tool_args": "$.arguments",
+    "tool_result": "$.output",
+    "tools": "$.tools[*]"
+  }
 }
 ```
 
@@ -626,6 +645,8 @@ sequenceDiagram
     Note over PO,API: HR đã lập đội (POST /teams, /teams/{id}/members)
     PO->>API: POST /projects/{id}/teams (gắn đội)
     PO->>API: POST /projects/{id}/guidelines
+    PO->>API: POST /projects/{id}/datasets/upload-url
+    Note over PO: PUT file lên R2 bằng presigned URL
     PO->>API: POST /projects/{id}/datasets/preview
     PO->>API: POST /projects/{id}/datasets
     PO->>API: POST /projects/{id}/job-configs
@@ -688,6 +709,7 @@ sequenceDiagram
 | `self_check_incomplete` | 400 | Chưa tick đủ self-check |
 | `reason_required` | 400 | Thiếu lý do ở thao tác bắt buộc lý do |
 | `file_too_large` | 413 | File upload vượt giới hạn |
+| `upload_not_found` | 400 | `upload_key` không tồn tại trên R2, đã hết hạn, hoặc không thuộc project này |
 | `rate_limited` | 429 | Thử đăng nhập quá nhiều lần |
 | `wip_limit_reached` | 409 | Lấy việc khi đang giữ đủ số job tối đa |
 | `task_has_no_team` | 409 | Kích hoạt task chưa giao cho đội |

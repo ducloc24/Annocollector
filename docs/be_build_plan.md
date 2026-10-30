@@ -17,12 +17,13 @@
 | DB | Supabase Postgres (transaction pooler, `NullPool`); fallback SQLite khi không cấu hình |
 | Cấu trúc | `endpoint → service → repository`, schema Pydantic riêng |
 | Lỗi | `AppError`, `NotFoundError`, `ConflictError`; định dạng `{code, message, details}` |
-| Test | pytest + httpx, chạy trên **SQLite** tạo mới mỗi test |
+| Test | pytest + httpx; hiện có test CRUD `Item` chạy trên SQLite |
 | Nghiệp vụ | Chưa có. Chỉ có `Item` mẫu và `health` |
 
 **Hệ quả quan trọng:** thiết kế DB dùng `jsonb`, `uuid`, unique một phần
-(`where revoked_at is null`). SQLite không có các thứ này, nên **test phải chạy trên
-Postgres** trước khi viết nghiệp vụ (bước 0).
+(`where revoked_at is null`). SQLite không có các thứ này. **Đã chốt: không viết test
+có DB.** Test chỉ cho phần logic thuần (state machine, kiểm tra quyền, label schema,
+parser, chọn job), repository được giả lập. Phần chạm DB kiểm tra bằng tay trên Supabase.
 
 ---
 
@@ -67,15 +68,15 @@ nếu có hai người.
 
 | Việc | Chi tiết |
 | --- | --- |
-| Test trên Postgres | Chạy Postgres bằng Docker (thêm service vào `docker-compose.yml` hoặc dùng testcontainers). Mỗi test chạy trong transaction rồi rollback, hoặc mỗi phiên test một schema riêng. Bỏ fallback SQLite cho test |
+| Test không có DB | Bỏ fixture tạo bảng SQLite trong `tests/conftest.py`; giữ client gọi API không cần DB; test logic thuần với repository giả lập |
 | Base model | Mixin `id` (uuid), `created_at`; quy ước đặt tên constraint cho Alembic |
 | Xoá `Item` mẫu | Xoá model, repo, service, endpoint, test, migration mẫu (hoặc migration xoá bảng) |
 | Lỗi mới | `UnauthorizedError` (401), `ForbiddenError` (403), `InvalidStateError` (409) |
 | Request context | Lấy `ip`, `user_agent`, request id cho audit và log |
 | Phân trang | Dùng lại `Page` trong `schemas/common.py`, chuẩn hoá tham số `limit`/`offset` |
-| CI cục bộ | `npm run lint`, `typecheck`, `test` chạy được với Postgres |
+| CI cục bộ | `npm run lint`, `typecheck`, `test` chạy được mà không cần DB |
 
-**Xong khi:** test chạy trên Postgres, không còn code `Item`, CI xanh.
+**Xong khi:** test chạy không cần DB, không còn code `Item`, CI xanh.
 
 ---
 
@@ -144,16 +145,16 @@ project không đọc được project.
 
 | Module | Nội dung |
 | --- | --- |
-| Storage adapter | Interface lưu file (`put`, `get`, `delete`); bản đầu lưu ổ đĩa cục bộ, sau đổi sang Supabase Storage hoặc S3 mà không sửa service |
+| Storage adapter | Interface lưu file (`presign_upload`, `get`, `head`, `delete`); bản cài đặt dùng **Cloudflare R2** qua S3 API (boto3). Bucket không công khai; frontend upload thẳng lên R2 bằng presigned URL, backend đọc lại để parse |
 | Parser registry | `PARSERS = {"jsonl_chat": ...}`; mỗi parser có `name`, `version`, `item_type`, hàm `parse(file, options) -> items + lỗi` |
 | `jsonl_chat` parser | Đọc từng dòng, áp field mapping (JSONPath) để ra trajectory chuẩn: lời user, danh sách bước, tool schema |
 | Preview | Parse vài dòng đầu, trả item mẫu và lỗi, **không** lưu |
-| `services/dataset` | Upload, parse, ghi `dataset_versions` (kèm `parser`, `parser_options`, `parser_version`, checksum, `item_count`) và `items` trong một lần |
+| `services/dataset` | Cấp presigned URL (key dạng `projects/{project_id}/uploads/{uuid}.jsonl`), kiểm tra key thuộc đúng project, đọc file từ R2, parse, ghi `dataset_versions` (kèm `parser`, `parser_options`, `parser_version`, checksum, `item_count`) và `items` trong một lần |
 | Báo lỗi parse | Trả danh sách lỗi theo số dòng; nếu lỗi quá ngưỡng thì không tạo version |
 
 **Endpoint:** xem `api_design.md` mục 3.8.
 
-**Lưu ý:** bản đầu parse đồng bộ trong request, giới hạn kích thước file (cấu hình). Khi
+**Lưu ý:** bản đầu parse đồng bộ trong request, giới hạn kích thước file (kiểm tra bằng `head` trên R2 trước khi đọc). Khi
 file lớn mới chuyển sang tác vụ nền (bước 8).
 
 **Test bắt buộc:** file JSONL hợp lệ ra đúng số item; dòng hỏng báo đúng số dòng; upload
@@ -291,8 +292,8 @@ thuộc project không xem được tiến độ.
 | # | Câu hỏi | Ảnh hưởng | Đề xuất |
 | --- | --- | --- | --- |
 | 1 | ~~Đăng nhập~~ | Bước 1 | **Đã chốt:** JWT access 15 phút + refresh token lưu DB + kiểm tra `token_version` mỗi request |
-| 2 | **Test chạy Postgres bằng gì?** | Bước 0 | Docker Compose với một service Postgres riêng cho test |
-| 3 | **Lưu file dataset ở đâu?** | Bước 3 | Bản đầu ổ đĩa cục bộ qua storage adapter, sau đổi Supabase Storage |
+| 2 | ~~Test DB~~ | Bước 0 | **Đã chốt:** không viết test có DB |
+| 3 | ~~Lưu file dataset~~ | Bước 3 | **Đã chốt:** Cloudflare R2 (bucket `annocolector`), upload bằng presigned URL. Biến môi trường `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` |
 | 4 | ~~Bản nháp~~ | Bước 5 | **Đã chốt:** cột `jobs.draft` (jsonb) |
 | 5 | **Job không bị lấy mẫu review đi đâu?** | Bước 6 | Bản đầu review 100% để tránh câu hỏi này; lấy mẫu làm ở bước 8 |
 | 6 | **Rubric lưu ở đâu?** | Bước 2, 6 | Docs yêu cầu job ghim rubric nhưng DB chưa có bảng. Đề xuất bản đầu gộp rubric vào nội dung guideline version |

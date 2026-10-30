@@ -452,7 +452,7 @@ erDiagram
         uuid id PK
         uuid project_id FK
         int version
-        string storage_path
+        string storage_path "key của file gốc trên R2"
         string checksum
         int item_count
         string parser "tên trong parser registry"
@@ -1003,8 +1003,8 @@ DB chỉ giữ khoá ngoại, `NOT NULL` và unique cơ bản.
 3. **Danh mục `reason_code`** dùng chung giữa annotator và reviewer hay tách?
 4. ~~Phiên đăng nhập~~: **đã chốt** JWT (access 15 phút + refresh token lưu DB +
    `token_version`).
-5. **Lưu file lớn** (ảnh, audio, dataset): object storage nào, `payload` chỉ giữ
-   đường dẫn.
+5. ~~Lưu file lớn~~: **đã chốt** Cloudflare R2, bucket không công khai, upload bằng
+   presigned URL. `payload` của ảnh/audio sau này chỉ giữ key trên R2.
 6. **Tách `annotations.value` ra bảng theo từng item riêng** nếu sau này thống kê
    theo nhãn nhiều; hiện để jsonb trong `annotations`.
 7. **Phân quyền xem dữ liệu của `hr_admin`**: không có endpoint nào trả về nội dung

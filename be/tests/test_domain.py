@@ -6,7 +6,7 @@ import pytest
 
 from app.core.exceptions import InvalidStateError
 from app.domain import jsonpath
-from app.domain.job_rules import DEFAULT_JOB_RULES, normalize_rules, validate_self_check
+from app.domain.job_rules import normalize_rules, validate_self_check
 from app.domain.job_state import ensure_transition
 from app.domain.label_schema import (
     DEFAULT_TOOL_CALL_SCHEMA,
@@ -112,8 +112,10 @@ def test_default_schema_is_valid():
 def test_schema_problems():
     assert validate_schema({"fields": []})
     assert validate_schema({"fields": [{"name": "a", "type": "enum"}]})
-    assert validate_schema({"fields": [{"name": "a", "type": "text", "visible_if": {"field": "b"}}]})
-    assert validate_schema({"fields": [{"name": "a", "type": "text"}, {"name": "a", "type": "text"}]})
+    dangling = {"name": "a", "type": "text", "visible_if": {"field": "b"}}
+    assert validate_schema({"fields": [dangling]})
+    twin = {"name": "a", "type": "text"}
+    assert validate_schema({"fields": [twin, twin]})
 
 
 def test_value_rules():

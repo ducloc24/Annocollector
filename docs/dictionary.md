@@ -131,6 +131,12 @@ review, tiến độ và phân quyền dùng chung.
 | **Re-review** | Review lại một job hoặc task đã accept. Tạo bản ghi mới, không mở lại job cũ. |
 | **Correction** | Sửa nhãn trực tiếp. Chỉ khi bắt buộc, có quyền riêng và audit riêng. |
 | **Consensus** | Nhiều annotator cùng làm một job để so sánh kết quả. Chưa chốt có dùng không. |
+| **IAA (inter-annotator agreement)** | Mức đồng thuận giữa các annotator cùng làm một job. Đo bằng kappa; ngưỡng gợi ý ≥ 0.7. |
+| **Kappa (Cohen's / Fleiss')** | Chỉ số đồng thuận đã trừ phần trùng do ngẫu nhiên. Cohen's cho hai người, Fleiss' cho từ ba người trở lên. |
+| **Adjudicator** | Người chốt kết quả cuối khi các annotator hoặc reviewer lệch nhau (consensus). Kết quả là một bản ghi `adjudicated` có `decided_by`. |
+| **Double review** | Cho reviewer thứ hai chấm độc lập một mẫu ngẫu nhiên job reviewer đầu đã accept, để kiểm tra chính reviewer. |
+| **Golden example** | Ví dụ đúng/sai mẫu cho từng tiêu chí trong rubric. |
+| **Coaching** | Buổi hướng dẫn khi annotator lặp lại cùng một `reason_code`, thay cho chỉ trừ điểm. |
 | **Gold job** | Job đã có đáp án chuẩn, trộn vào hàng đợi để đo chất lượng và phát hiện gian lận. Không để lộ cho annotator. |
 | **Sampling / lấy mẫu** | Chỉ review một phần job thay vì 100%, chọn ngẫu nhiên. |
 | **Acceptance / nghiệm thu** | PO duyệt cả task: kiểm tra tỷ lệ pass, lỗi lặp, mẫu ngẫu nhiên 5–10%. |

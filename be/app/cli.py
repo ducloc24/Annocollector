@@ -82,12 +82,20 @@ def main(argv: list[str] | None = None) -> None:
     bootstrap = commands.add_parser("create-hr-admin", help="create the first hr_admin")
     bootstrap.add_argument("--email", required=True)
     bootstrap.add_argument("--name", required=True)
+    bootstrap.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="read the password from the first line of stdin (for scripts)",
+    )
     args = parser.parse_args(argv)
 
     if args.command == "create-hr-admin":
-        password = getpass.getpass("Password: ")
-        if password != getpass.getpass("Repeat password: "):
-            sys.exit("Passwords do not match.")
+        if args.password_stdin:
+            password = sys.stdin.readline().rstrip("\r\n")
+        else:
+            password = getpass.getpass("Password: ")
+            if password != getpass.getpass("Repeat password: "):
+                sys.exit("Passwords do not match.")
         asyncio.run(create_hr_admin(args.email, args.name, password))
 
 

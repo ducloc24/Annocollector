@@ -131,6 +131,19 @@ export async function logout(): Promise<void> {
   accessToken = null;
 }
 
+/** Download a file that needs the access token (for example an export). */
+export async function download(path: string, filename: string): Promise<void> {
+  let response = await rawFetch(path);
+  if (response.status === 401 && (await refreshSession())) response = await rawFetch(path);
+  if (!response.ok) throw await toError(response);
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 /** Message shown to the user for any thrown value. */
 export function errorMessage(error: unknown, fallback = "Có lỗi xảy ra"): string {
   if (error instanceof ApiError) {

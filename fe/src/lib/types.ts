@@ -275,3 +275,71 @@ export type Workload = {
   review: number;
   roles: string[];
 };
+
+export type Appeal = {
+  id: string;
+  job_id: string;
+  job_ordinal: number | null;
+  opened_by: string;
+  opener_name: string | null;
+  reason: string;
+  status: string;
+  outcome: string | null;
+  resolution: string | null;
+  opened_at: string;
+  resolved_at: string | null;
+};
+
+export type AnnotatorQuality = {
+  user_id: string;
+  name: string;
+  jobs_closed: number;
+  first_pass_rate: number | null;
+  avg_rework: number | null;
+  reject_rate: number | null;
+  gold_accuracy: number | null;
+};
+
+export type QualityReport = {
+  jobs_closed: number;
+  first_pass_rate: number | null;
+  reject_rate: number | null;
+  reason_codes: { reason_code: string; count: number; severity: string }[];
+  trend: { week: string; jobs: number; first_pass_rate: number | null }[];
+  annotators: AnnotatorQuality[];
+  reviewers: { user_id: string; name: string; reviews: number; reject_rate: number | null; overridden: number }[];
+};
+
+export type MyQuality = {
+  project: { id: string; name: string };
+  as_annotator: AnnotatorQuality | null;
+  as_reviewer: QualityReport["reviewers"][number] | null;
+};
+
+export type TeamOverviewRow = {
+  user: { id: string; full_name: string };
+  team_role: string;
+  is_lead: boolean;
+  annotating: number;
+  reviewing: number;
+  jobs_accepted: number;
+};
+
+export type TeamQuality = {
+  members: (Omit<AnnotatorQuality, "gold_accuracy" | "user_id"> & {
+    user_id: string;
+    top_errors: { reason_code: string; count: number; severity: string }[];
+    coaching_flag: boolean;
+  })[];
+  trend: QualityReport["trend"];
+  projects: number;
+};
+
+export type SettingRow = {
+  key: string;
+  label: string;
+  value: number;
+  default: number;
+  min: number;
+  max: number;
+};

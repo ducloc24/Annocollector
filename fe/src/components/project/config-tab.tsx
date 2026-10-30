@@ -32,6 +32,7 @@ const RULE_FIELDS: { key: string; label: string; hint: string }[] = [
   { key: "wip_limit_annotator", label: "Giới hạn job đang làm / annotator", hint: "" },
   { key: "wip_limit_reviewer", label: "Giới hạn job đang chấm / reviewer", hint: "" },
   { key: "review_sla_hours", label: "SLA chấm (giờ)", hint: "Quá hạn thì tính là kẹt" },
+  { key: "review_rate", label: "Tỷ lệ review (0.05–1)", hint: "1 = chấm mọi job; nhỏ hơn thì job không được chọn tự động được chấp nhận. Job không chắc, job sửa lại và gold job luôn được chấm." },
 ];
 
 function emptyField(): FieldDef {
@@ -196,6 +197,7 @@ function Editor({ project, base, onClose, onDone }: { project: Project; base: Jo
               <Field key={r.key} label={r.label} hint={r.hint || undefined}>
                 <Input
                   type="number"
+                  step="any"
                   placeholder="mặc định"
                   value={rules[r.key] ?? ""}
                   onChange={(e) => {

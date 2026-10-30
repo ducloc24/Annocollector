@@ -749,5 +749,14 @@ Bản cài đặt (`be/app/api/v1/endpoints/`) khác thiết kế ở các đi�
 | Upload khi chưa cấu hình R2 | — | `PUT /storage/upload` nhận file vào thư mục cục bộ (chỉ dev); URL ký bằng HMAC |
 | Xem item | `GET /jobs/{id}` | Cùng endpoint trả cả item, guideline đã ghim, label schema, mã lỗi, bản nháp (chỉ người làm) và các vòng (người khác) |
 | Re-review | Mở cho task hoặc danh sách job | Chỉ danh sách job (`job_ids`) |
-| Chưa làm | `/system/settings`, `/me/projects`, các endpoint P1 (khiếu nại, override, gold job, export, trưởng nhóm) | Chưa có |
-| Lấy mẫu review | `review_rate` < 1 | Chỉ nhận 1.0 (review 100%) |
+| Khiếu nại | `POST /jobs/{id}/appeals`, `GET /projects/{id}/appeals`, `POST /appeals/{id}/decision` | `POST /jobs/{id}/appeals`, `GET /projects/{project_id}/appeals`, `GET /me/appeals`, `POST /projects/{project_id}/appeals/{appeal_id}/decision` với `action` = `upheld`, `overturned` hoặc `forward` |
+| Override | `POST /jobs/{id}/override` | `POST /projects/{project_id}/jobs/{job_id}/override` |
+| Gold job | Đánh dấu job và nhập đáp án | `POST /projects/{project_id}/gold-jobs` nhân bản một job đã đạt; nhãn đã chấp nhận của job gốc là đáp án chuẩn |
+| Chất lượng | `GET /projects/{id}/quality`, `GET /me/quality` | Như thiết kế; annotator và reviewer chỉ thấy dòng của chính mình |
+| Export | `POST .../exports` rồi `GET .../exports/{id}` | `GET /projects/{project_id}/tasks/{task_id}/export` trả JSONL ngay (chỉ task đã giao) |
+| Trưởng nhóm | `GET /teams/{id}/overview`, `/quality`, `/alerts` | Như thiết kế; chỉ người có cờ `is_lead` của đúng đội (người khác nhận 404) |
+| Cài đặt hệ thống | `GET/PATCH /system/settings` | Như thiết kế; chỉ có 3 khoá: `appeal_window_days`, `stuck_hours`, `max_upload_mb` |
+| Nhật ký project | — | `GET /projects/{project_id}/audit-events` cho owner |
+| Tác vụ nền | Job nền | Vòng lặp trong lifespan, 5 phút một lần trả job hết lease về hàng đợi (tắt bằng `BACKGROUND_TASKS=false`) |
+| Lấy mẫu review | `review_rate` < 1 | Hỗ trợ `review_rate` từ 0.05 đến 1. Job không được chọn tự động `accepted` kèm một dòng review `auto_accept`; job có bước không chắc, job sửa lại và gold job luôn được chấm |
+| Chưa làm | `/me/projects`, service account (AD-02), calibration (RV-06), sửa nhãn trực tiếp (RV-07), break-glass (AD-04), xung đột lợi ích (PM-09), thông báo | Chưa có |

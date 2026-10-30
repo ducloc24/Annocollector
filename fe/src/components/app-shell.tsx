@@ -14,7 +14,8 @@ function Shell({ children }: { children: ReactNode }) {
 
   const isAnnotator = teams.some((t) => t.team_role === "annotator");
   const isReviewer = teams.some((t) => t.team_role === "reviewer");
-  const isLead = teams.some((t) => t.is_lead);
+  const leadTeam = teams.find((t) => t.is_lead);
+  const isLead = !!leadTeam;
 
   const sections: { title?: string; items: NavItem[] }[] = [
     {
@@ -22,6 +23,7 @@ function Shell({ children }: { children: ReactNode }) {
         { href: "/", label: "Việc cần làm", show: true },
         { href: "/work", label: "Gán nhãn", show: isAnnotator },
         { href: "/review", label: "Chấm", show: isReviewer },
+        { href: leadTeam ? `/teams/${leadTeam.team_id}` : "/teams", label: "Đội của tôi", show: isLead },
         {
           href: "/projects",
           label: "Project",
@@ -40,6 +42,7 @@ function Shell({ children }: { children: ReactNode }) {
           show: can("platform_role.grant"),
         },
         { href: "/admin/audit", label: "Audit", show: can("audit.read") },
+        { href: "/admin/system", label: "Hệ thống", show: can("system.configure") },
       ],
     },
     {

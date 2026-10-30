@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     data,
     health,
     me,
+    ops,
     projects,
     teams,
     users,
@@ -24,3 +25,4 @@ api_router.include_router(teams.router)
 api_router.include_router(projects.router)
 api_router.include_router(data.router)
 api_router.include_router(work.router)
+api_router.include_router(ops.router)

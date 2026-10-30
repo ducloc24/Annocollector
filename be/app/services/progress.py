@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.work import CLOSED_JOB_STATUSES, JobStatus, Task, TaskStatus
 from app.repositories.work import WorkRepository
 from app.services.audit import AuditService
+from app.services.settings import SettingsService
 
 THROUGHPUT_DAYS = 7
 STUCK_HOURS = 24
@@ -62,23 +63,33 @@ def acceptance_sample(task_id: uuid.UUID, job_ids: list[uuid.UUID]) -> list[uuid
 
 
 class ProgressService:
-    def __init__(self, work: WorkRepository, audit: AuditService, clock: Clock = utcnow) -> None:
+    def __init__(
+        self,
+        work: WorkRepository,
+        audit: AuditService,
+        clock: Clock = utcnow,
+        app_settings: SettingsService | None = None,
+    ) -> None:
         self.work = work
         self.audit = audit
         self.clock = clock
+        self.app_settings = app_settings
 
     async def progress(self, project_id: uuid.UUID, task_id: uuid.UUID | None) -> dict[str, Any]:
         now = self.clock()
         counts = await self.work.status_counts(project_id, task_id)
         closed = await self.work.closed_jobs(project_id, task_id)
         summary = summarize(counts, closed, now)
+        stuck_hours = (
+            await self.app_settings.get("stuck_hours") if self.app_settings else STUCK_HOURS
+        )
         _, stuck = await self.work.list_jobs(
             project_id,
             status=None,
             task_id=task_id,
             assignee_id=None,
             reviewer_id=None,
-            stuck_before=now - timedelta(hours=STUCK_HOURS),
+            stuck_before=now - timedelta(hours=stuck_hours),
             offset=0,
             limit=1,
         )

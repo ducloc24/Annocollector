@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     # Create tables on startup (dev only, Alembic owns the schema otherwise)
     AUTO_CREATE_TABLES: bool = False
 
+    # Periodic maintenance (releases expired job leases); off in tests.
+    BACKGROUND_TASKS: bool = True
+
     # Auth (JWT access token + refresh token stored in DB)
     JWT_SECRET_KEY: str | None = None
     ACCESS_TOKEN_MINUTES: int = 15

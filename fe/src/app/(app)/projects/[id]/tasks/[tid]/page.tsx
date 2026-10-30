@@ -19,7 +19,7 @@ import {
   Td,
   useAsync,
 } from "@/components/ui";
-import { errorMessage, get, post } from "@/lib/api";
+import { download, errorMessage, get, post } from "@/lib/api";
 import type { Acceptance, Job, Page, Progress, Project, Task } from "@/lib/types";
 
 const LABELS: Record<string, string> = {
@@ -48,6 +48,10 @@ export default function TaskPage() {
   const jobs = useAsync(() => get<Page<Job>>(`/projects/${id}/jobs?task_id=${tid}&limit=100`), [id, tid]);
   const [signing, setSigning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gold, setGold] = useState<Job | null>(null);
+  const canAssign = project?.my_permissions.includes("job.assign") ?? false;
+  const canExport = project?.my_permissions.includes("export.data") ?? false;
+  const canOverride = project?.my_permissions.includes("review.override") ?? false;
 
   async function refresh() {
     await Promise.all([task.reload(), progress.reload(), acceptance.reload()]);
@@ -65,9 +69,24 @@ export default function TaskPage() {
             }
             subtitle={`${t.jobs_total} job · tạo ${formatDate(t.created_at)}${t.delivered_at ? ` · đã giao ${formatDate(t.delivered_at)}` : ""}`}
             actions={
-              <Link href={`/projects/${id}?tab=tasks`} className="text-sm underline underline-offset-2">
-                ← Task
-              </Link>
+              <>
+                {t.status === "delivered" && canExport && (
+                  <Button
+                    onClick={async () => {
+                      try {
+                        await download(`/projects/${id}/tasks/${tid}/export`, `${t.name}.jsonl`);
+                      } catch (e) {
+                        setError(errorMessage(e));
+                      }
+                    }}
+                  >
+                    Export JSONL
+                  </Button>
+                )}
+                <Link href={`/projects/${id}?tab=tasks`} className="text-sm underline underline-offset-2">
+                  ← Task
+                </Link>
+              </>
             }
           />
           {error && <div className="mb-4"><Notice>{error}</Notice></div>}
@@ -140,7 +159,7 @@ export default function TaskPage() {
                   page.items.length === 0 ? (
                     <Empty>Chưa có job.</Empty>
                   ) : (
-                    <Table head={["Job", "Trạng thái", "Sửa", "Nộp lúc", "Đóng lúc"]}>
+                    <Table head={["Job", "Trạng thái", "Sửa", "Nộp lúc", "Đóng lúc", ""]}>
                       {page.items.map((j) => (
                         <tr key={j.id}>
                           <Td>#{j.ordinal}</Td>
@@ -150,6 +169,20 @@ export default function TaskPage() {
                           <Td>{j.rework_count}</Td>
                           <Td>{formatDate(j.submitted_at)}</Td>
                           <Td>{formatDate(j.closed_at)}</Td>
+                          <Td className="text-right">
+                            <div className="flex justify-end gap-2">
+                              {["accepted", "accepted_with_fix", "rejected"].includes(j.status) && (
+                                <Link href={`/jobs/${j.id}/review`} className="text-sm underline underline-offset-2">
+                                  {canOverride ? "Xem / đổi quyết định" : "Xem"}
+                                </Link>
+                              )}
+                              {canAssign && ["accepted", "accepted_with_fix"].includes(j.status) && (
+                                <Button variant="ghost" onClick={() => setGold(j)}>
+                                  Làm gold job
+                                </Button>
+                              )}
+                            </div>
+                          </Td>
                         </tr>
                       ))}
                     </Table>
@@ -158,6 +191,18 @@ export default function TaskPage() {
               </Loaded>
             </Card>
           </div>
+          {gold && (
+            <ConfirmDialog
+              title={`Tạo gold job từ job #${gold.ordinal}`}
+              message="Hệ thống nhân bản job này thành một job mới trong hàng đợi; nhãn đã được chấp nhận của job gốc là đáp án chuẩn. Người làm không biết đó là gold job. Dùng để đo độ chính xác của annotator."
+              confirmLabel="Tạo gold job"
+              onClose={() => setGold(null)}
+              onConfirm={async () => {
+                await post(`/projects/${id}/gold-jobs`, { job_id: gold.id });
+                await jobs.reload();
+              }}
+            />
+          )}
           {signing && (
             <ConfirmDialog
               title="Ký nghiệm thu task"

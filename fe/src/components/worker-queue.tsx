@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Badge, Button, Card, Empty, formatDate, Loaded, Notice, PageHeader, useAsync } from "@/components/ui";
+import { Badge, Button, Card, Empty, Field, formatDate, Loaded, Modal, Notice, PageHeader, Table, Td, Textarea, useAsync } from "@/components/ui";
 import { ApiError, errorMessage, get, post } from "@/lib/api";
-import type { JobView, Queue } from "@/lib/types";
+import type { Appeal, Job, JobView, Queue } from "@/lib/types";
 
 type Mode = "annotate" | "review";
 
@@ -29,12 +29,76 @@ const copy = {
   },
 } as const;
 
+function AppealDialog({ job, onClose, onDone }: { job: Job; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  async function submit() {
+    try {
+      await post(`/jobs/${job.id}/appeals`, { reason });
+      onDone();
+      onClose();
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.code === "appeal_window_closed"
+          ? "Đã quá hạn khiếu nại."
+          : errorMessage(e),
+      );
+    }
+  }
+  return (
+    <Modal title={`Khiếu nại job #${job.ordinal}`} onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        {error && <Notice>{error}</Notice>}
+        <p className="text-sm text-zinc-500">
+          Nêu lý do bạn cho rằng quyết định trả lại là sai. PM xem trước, có thể chuyển lên owner. Căn cứ là guideline đã ghim lúc bạn làm.
+        </p>
+        <Field label="Lý do">
+          <Textarea rows={4} value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>Huỷ</Button>
+          <Button variant="primary" disabled={reason.trim().length < 3} onClick={() => void submit()}>
+            Gửi khiếu nại
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function MyAppeals({ refreshKey }: { refreshKey: number }) {
+  const state = useAsync(() => get<Appeal[]>("/me/appeals"), [refreshKey]);
+  return (
+    <Loaded state={state}>
+      {(rows) =>
+        rows.length === 0 ? null : (
+          <Card title="Khiếu nại của tôi" className="mt-6">
+            <Table head={["Job", "Lý do", "Trạng thái", "Kết quả", "Mở lúc"]}>
+              {rows.map((a) => (
+                <tr key={a.id}>
+                  <Td>#{a.job_ordinal}</Td>
+                  <Td className="max-w-xs truncate">{a.reason}</Td>
+                  <Td>{a.status === "closed" ? "Đã đóng" : "Đang xử lý"}</Td>
+                  <Td>{a.outcome === "overturned" ? "Được chấp nhận" : a.outcome === "upheld" ? "Giữ nguyên quyết định" : "—"}{a.resolution ? `: ${a.resolution}` : ""}</Td>
+                  <Td>{formatDate(a.opened_at)}</Td>
+                </tr>
+              ))}
+            </Table>
+          </Card>
+        )
+      }
+    </Loaded>
+  );
+}
+
 export function WorkerQueue({ mode }: { mode: Mode }) {
   const c = copy[mode];
   const router = useRouter();
   const queues = useAsync(() => get<Queue[]>("/me/queues"));
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [appealing, setAppealing] = useState<Job | null>(null);
+  const [appealKey, setAppealKey] = useState(0);
 
   async function pull(projectId: string) {
     setBusy(projectId);
@@ -109,6 +173,11 @@ export function WorkerQueue({ mode }: { mode: Mode }) {
                               {j.status === "rejected" && (
                                 <span className="ml-2 text-red-600">bị trả lại, còn lượt sửa</span>
                               )}
+                              {mode === "annotate" && j.status === "rejected" && (
+                                <Button variant="ghost" onClick={() => setAppealing(j)}>
+                                  Khiếu nại
+                                </Button>
+                              )}
                             </div>
                             <span className="text-xs text-zinc-500">
                               {j.lease_expires_at ? `hạn giữ ${formatDate(j.lease_expires_at)}` : ""}
@@ -124,6 +193,17 @@ export function WorkerQueue({ mode }: { mode: Mode }) {
           );
         }}
       </Loaded>
+      {mode === "annotate" && <MyAppeals refreshKey={appealKey} />}
+      {appealing && (
+        <AppealDialog
+          job={appealing}
+          onClose={() => setAppealing(null)}
+          onDone={() => {
+            setAppealKey((k) => k + 1);
+            void queues.reload();
+          }}
+        />
+      )}
     </>
   );
 }

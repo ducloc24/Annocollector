@@ -14,6 +14,7 @@ from app.models.user import User
 from app.repositories.project import ProjectRepository
 from app.repositories.work import WorkRepository
 from app.services.audit import AuditService
+from app.services.settings import SettingsService
 
 PREVIEW_ITEMS = 5
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
@@ -36,16 +37,24 @@ class DatasetService:
         storage: Storage,
         audit: AuditService,
         clock: Clock = utcnow,
+        app_settings: SettingsService | None = None,
     ) -> None:
         self.projects = projects
         self.work = work
         self.storage = storage
         self.audit = audit
         self.clock = clock
+        self.app_settings = app_settings
+
+    async def _max_mb(self) -> int:
+        if self.app_settings is None:
+            return settings.MAX_UPLOAD_MB
+        return await self.app_settings.get("max_upload_mb")
 
     async def upload_url(self, project_id: uuid.UUID, filename: str, size: int) -> tuple[str, str]:
-        if size > settings.MAX_UPLOAD_MB * 1024 * 1024:
-            raise FileTooLargeError(f"File is larger than {settings.MAX_UPLOAD_MB} MB")
+        limit = await self._max_mb()
+        if size > limit * 1024 * 1024:
+            raise FileTooLargeError(f"File is larger than {limit} MB")
         safe = _SAFE_NAME.sub("_", filename)[-80:] or "data.jsonl"
         key = f"{upload_prefix(project_id)}{uuid.uuid4().hex}-{safe}"
         url = await self.storage.presign_put(key, "application/octet-stream")
@@ -57,8 +66,9 @@ class DatasetService:
         size = await self.storage.size(upload_key)
         if size is None:
             raise AppError("Upload not found; upload the file first", code="upload_not_found")
-        if size > settings.MAX_UPLOAD_MB * 1024 * 1024:
-            raise FileTooLargeError(f"File is larger than {settings.MAX_UPLOAD_MB} MB")
+        limit = await self._max_mb()
+        if size > limit * 1024 * 1024:
+            raise FileTooLargeError(f"File is larger than {limit} MB")
         return await self.storage.read(upload_key)
 
     def _parser(self, name: str):

@@ -3,14 +3,17 @@
 import { type FormEvent, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
-import { Badge, Button, Card, Field, formatDate, Input, Notice, PageHeader, Table, Td } from "@/components/ui";
-import { errorMessage, post } from "@/lib/api";
+import { Badge, Button, Card, Field, formatDate, Input, Loaded, Notice, PageHeader, Table, Td, useAsync } from "@/components/ui";
+import { pct } from "@/components/project/quality-tab";
+import { errorMessage, get, post } from "@/lib/api";
+import type { MyQuality } from "@/lib/types";
 
 export default function AccountPage() {
   const { user, teams, projects, reload } = useAuth();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [message, setMessage] = useState<{ tone: "green" | "red"; text: string } | null>(null);
+  const quality = useAsync(() => get<MyQuality[]>("/me/quality"));
 
   async function change(e: FormEvent) {
     e.preventDefault();
@@ -70,6 +73,40 @@ export default function AccountPage() {
               ))}
             </Table>
           )}
+        </Card>
+        <Card title="Chất lượng của tôi" className="lg:col-span-2">
+          <Loaded state={quality}>
+            {(rows) =>
+              rows.length === 0 ? (
+                <p className="text-sm text-zinc-500">Chưa có số liệu.</p>
+              ) : (
+                <Table head={["Project", "Vai trò", "Job đạt", "Đạt lần đầu", "Tỷ lệ bị trả", "Đã chấm"]}>
+                  {rows.flatMap((r) => [
+                    r.as_annotator && (
+                      <tr key={`${r.project.id}-a`}>
+                        <Td>{r.project.name}</Td>
+                        <Td>annotator</Td>
+                        <Td>{r.as_annotator.jobs_closed}</Td>
+                        <Td>{pct(r.as_annotator.first_pass_rate)}</Td>
+                        <Td>{pct(r.as_annotator.reject_rate)}</Td>
+                        <Td>—</Td>
+                      </tr>
+                    ),
+                    r.as_reviewer && (
+                      <tr key={`${r.project.id}-r`}>
+                        <Td>{r.project.name}</Td>
+                        <Td>reviewer</Td>
+                        <Td>—</Td>
+                        <Td>—</Td>
+                        <Td>{pct(r.as_reviewer.reject_rate)}</Td>
+                        <Td>{r.as_reviewer.reviews}</Td>
+                      </tr>
+                    ),
+                  ])}
+                </Table>
+              )
+            }
+          </Loaded>
         </Card>
         <Card title="Đội và project">
           <ul className="flex flex-col gap-2 text-sm">

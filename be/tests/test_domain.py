@@ -67,18 +67,28 @@ def test_parser_builds_steps_and_targets():
     assert item.external_ref == "t-1"
     assert item.payload["targets"] == ["s2", "s4"]
     assert item.payload["steps"][1] == {
-        "id": "s2", "type": "tool_call", "tool": "search_flights", "args": {"origin": "HAN"}
+        "id": "s2",
+        "type": "tool_call",
+        "tool": "search_flights",
+        "args": {"origin": "HAN"},
     }
     assert item.payload["steps"][2]["content"] == '{"ok": true}'
 
 
 def test_parser_reports_errors_by_line():
-    lines = [trajectory(), "{bad json", "", trajectory(steps=[{"type": "user", "content": "x"}]),
-             trajectory(steps=[{"type": "weird"}])]
+    lines = [
+        trajectory(),
+        "{bad json",
+        "",
+        trajectory(steps=[{"type": "user", "content": "x"}]),
+        trajectory(steps=[{"type": "weird"}]),
+    ]
     result = JSONL_CHAT.parse(lines, {}, None)
     assert len(result.items) == 1
     assert [(e.line, e.code) for e in result.errors] == [
-        (2, "invalid_json"), (4, "no_tool_calls"), (5, "bad_step_type")
+        (2, "invalid_json"),
+        (4, "no_tool_calls"),
+        (5, "bad_step_type"),
     ]
     assert result.lines_total == 4
     assert parse_failed(result)
@@ -86,9 +96,17 @@ def test_parser_reports_errors_by_line():
 
 def test_parser_field_mapping():
     line = json.dumps({"q": "hi", "trace": [{"kind": "tool_call", "name": "f", "arguments": {}}]})
-    result = JSONL_CHAT.parse([line], {"user_message": "$.q", "steps": "$.trace[*]",
-                                       "step_type": "$.kind", "tool_name": "$.name",
-                                       "tool_args": "$.arguments"}, None)
+    result = JSONL_CHAT.parse(
+        [line],
+        {
+            "user_message": "$.q",
+            "steps": "$.trace[*]",
+            "step_type": "$.kind",
+            "tool_name": "$.name",
+            "tool_args": "$.arguments",
+        },
+        None,
+    )
     assert result.items[0].payload["user_message"] == "hi"
     assert result.items[0].payload["targets"] == ["s1"]
 
@@ -142,7 +160,8 @@ def test_job_rules():
     rules, errors = normalize_rules({"items_per_job": 5})
     assert not errors and rules["items_per_job"] == 5 and rules["max_rework"] == 2
     assert normalize_rules({"items_per_job": 0})[1]
-    assert normalize_rules({"review_rate": 0.3})[1]
+    assert normalize_rules({"review_rate": 0.3})[1] == []
+    assert normalize_rules({"review_rate": 2})[1]
     assert normalize_rules({"bogus": 1})[1]
     assert validate_self_check(["ok"]) == [] and validate_self_check([""])
     _, errors = check_job_config("image_bbox", DEFAULT_TOOL_CALL_SCHEMA, {}, [])
@@ -164,7 +183,7 @@ def test_state_machine():
         ensure_transition("assigned", JobStatus.SUBMITTED)
     assert exc.value.details["allowed"]
     with pytest.raises(InvalidStateError):
-        ensure_transition("submitted", JobStatus.ACCEPTED)
+        ensure_transition("submitted", JobStatus.REJECTED)
 
 
 # ---------- submission ----------
@@ -208,8 +227,10 @@ def test_role_conflicts():
 def test_summary():
     now = datetime(2026, 11, 1, tzinfo=UTC)
     counts = {"accepted": 3, "accepted_with_fix": 1, "submitted": 2, "unassigned": 4}
-    closed = [(now - timedelta(hours=h + 1), now - timedelta(days=d), r)
-              for h, d, r in [(2, 1, 0), (4, 2, 1), (10, 3, 0), (20, 9, 0)]]
+    closed = [
+        (now - timedelta(hours=h + 1), now - timedelta(days=d), r)
+        for h, d, r in [(2, 1, 0), (4, 2, 1), (10, 3, 0), (20, 9, 0)]
+    ]
     s = summarize(counts, closed, now)
     assert s["jobs_total"] == 10
     assert s["completion_rate"] == 0.4

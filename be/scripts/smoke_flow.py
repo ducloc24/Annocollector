@@ -7,6 +7,7 @@ samples/trajectories.jsonl; the annotator and reviewer work every job (one goes 
 reject/rework round); the PO signs the task off. Creates fresh users/project/team each run.
 """
 
+import json
 import os
 import sys
 import time
@@ -225,6 +226,13 @@ def main() -> None:
         ok("activate project", po.post(f"/projects/{pid}/activate"), 200)
         ok("activate task", po.post(f"/projects/{pid}/tasks/{tid}/activate"), 200)
 
+        if os.environ.get("SMOKE_STOP_AFTER_SETUP"):
+            # For the browser test: leave the task active with every job still waiting.
+            print(
+                "SETUP " + json.dumps({"run": RUN, "project": pid, "task": tid, "team": team["id"]})
+            )
+            return
+
         # ---- labelling and review ----
         ok("reviewer cannot pull annotation work", rev.post(f"/projects/{pid}/jobs/next"), 403)
         first = ok("annotator next job", ann.post(f"/projects/{pid}/jobs/next"), 200)
@@ -324,6 +332,139 @@ def main() -> None:
         assert acceptance["can_sign_off"], acceptance
         ok("sign off", po.post(f"/projects/{pid}/tasks/{tid}/sign-off"), 200)
         ok("audit for project", hr.get("/audit-events", params={"project_id": pid}), 200)
+
+        # ---- P1: export, quality, override, appeal, gold, team lead, settings ----
+        exported = po.get(f"/projects/{pid}/tasks/{tid}/export")
+        assert exported.status_code == 200, exported.text
+        lines = [ln for ln in exported.text.splitlines() if ln.strip()]
+        assert len(lines) == 6, lines  # one line per labelled tool call: 4 + 1 + 1
+        print(f"[OK ] export task: {len(lines)} lines")
+        ok("annotator cannot export", ann.get(f"/projects/{pid}/tasks/{tid}/export"), 403)
+
+        quality = ok("project quality", po.get(f"/projects/{pid}/quality"), 200)
+        assert quality["jobs_closed"] == 3, quality
+        assert len(quality["annotators"]) == 1 and quality["reviewers"], quality
+        own = ok("annotator sees own quality only", ann.get(f"/projects/{pid}/quality"), 200)
+        assert [a["user_id"] for a in own["annotators"]] == [ann.id], own
+        ok("my quality", ann.get("/me/quality"), 200)
+
+        jobs = ok("list jobs", po.get(f"/projects/{pid}/jobs", params={"task_id": tid}), 200)
+        target = jobs["items"][0]["id"]
+        ok(
+            "override needs a reason",
+            po.post(
+                f"/projects/{pid}/jobs/{target}/override", {"decision": "reject", "reason": ""}
+            ),
+            422,
+        )
+        ok(
+            "reviewer cannot override",
+            rev.post(
+                f"/projects/{pid}/jobs/{target}/override",
+                {"decision": "reject", "reason": "no right"},
+            ),
+            403,
+        )
+        over = ok(
+            "owner overrides to reject",
+            po.post(
+                f"/projects/{pid}/jobs/{target}/override",
+                {"decision": "reject", "reason": "Kiểm tra lại"},
+            ),
+            200,
+        )
+        assert over["status"] == "rejected", over
+        ok(
+            "override to the same state",
+            po.post(
+                f"/projects/{pid}/jobs/{target}/override", {"decision": "reject", "reason": "again"}
+            ),
+            409,
+        )
+
+        appeal = ok(
+            "annotator appeals",
+            ann.post(f"/jobs/{target}/appeals", {"reason": "Tôi làm đúng guideline"}),
+            201,
+        )
+        ok(
+            "second appeal blocked",
+            ann.post(f"/jobs/{target}/appeals", {"reason": "lại"}),
+            409,
+            "appeal_exists",
+        )
+        ok("reviewer cannot appeal", rev.post(f"/jobs/{target}/appeals", {"reason": "x y z"}), 404)
+        listed = ok("appeals list", po.get(f"/projects/{pid}/appeals"), 200)
+        assert any(a["id"] == appeal["id"] for a in listed)
+        ok(
+            "annotator cannot decide",
+            ann.post(
+                f"/projects/{pid}/appeals/{appeal['id']}/decision",
+                {"action": "overturned", "resolution": "tự duyệt"},
+            ),
+            403,
+        )
+        closed = ok(
+            "owner overturns",
+            po.post(
+                f"/projects/{pid}/appeals/{appeal['id']}/decision",
+                {"action": "overturned", "resolution": "Annotator đúng"},
+            ),
+            200,
+        )
+        assert closed["status"] == "closed" and closed["outcome"] == "overturned", closed
+        after = ok("job accepted again", po.get(f"/jobs/{target}"), 200)
+        assert after["job"]["status"] == "accepted", after["job"]
+        ok("my appeals", ann.get("/me/appeals"), 200)
+
+        gold = ok("make gold job", po.post(f"/projects/{pid}/gold-jobs", {"job_id": target}), 201)
+        assert gold["status"] == "unassigned", gold
+        ok(
+            "gold needs an accepted job",
+            po.post(f"/projects/{pid}/gold-jobs", {"job_id": gold["id"]}),
+            409,
+        )
+        ok("quality still builds with gold", po.get(f"/projects/{pid}/quality"), 200)
+
+        detail = ok("team detail", hr.get(f"/teams/{team['id']}"), 200)
+        member = next(m for m in detail["members"] if m["user"]["id"] == ann.id)
+        ok(
+            "assign team lead",
+            hr.api.patch(
+                f"/teams/{team['id']}/members/{member['id']}",
+                json={"is_lead": True},
+                headers=hr.headers,
+            ),
+            200,
+        )
+        overview = ok("lead overview", ann.get(f"/teams/{team['id']}/overview"), 200)
+        assert any(r["user"]["id"] == ann.id and r["is_lead"] for r in overview), overview
+        ok("lead quality", ann.get(f"/teams/{team['id']}/quality"), 200)
+        ok("lead alerts", ann.get(f"/teams/{team['id']}/alerts"), 200)
+        ok("non-lead sees nothing", rev.get(f"/teams/{team['id']}/overview"), 404)
+
+        ok("owner project audit", po.get(f"/projects/{pid}/audit-events"), 200)
+        ok("annotator cannot read project audit", ann.get(f"/projects/{pid}/audit-events"), 403)
+
+        admin = make_user(hr, api, "admin", ["platform_admin"])
+        current = ok("system settings", admin.get("/system/settings"), 200)
+        assert {s["key"] for s in current["settings"]} >= {"stuck_hours", "appeal_window_days"}
+        ok("hr cannot read settings", hr.get("/system/settings"), 403)
+        ok(
+            "invalid setting",
+            admin.api.patch(
+                "/system/settings", json={"values": {"stuck_hours": 0}}, headers=admin.headers
+            ),
+            400,
+            "invalid_settings",
+        )
+        ok(
+            "update setting",
+            admin.api.patch(
+                "/system/settings", json={"values": {"stuck_hours": 24}}, headers=admin.headers
+            ),
+            200,
+        )
 
     print(f"\nAll {passed} checks passed (run {RUN}).")
 

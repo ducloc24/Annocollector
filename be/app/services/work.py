@@ -14,6 +14,7 @@ from app.core.exceptions import (
 from app.domain import label_schema
 from app.domain.item_types import get_item_type
 from app.domain.job_state import ensure_transition
+from app.domain.quality import should_review
 from app.models.project import GuidelineVersion, Item, ProjectStatus, ReasonCode
 from app.models.user import User
 from app.models.work import (
@@ -294,6 +295,26 @@ class WorkService:
         job.lease_expires_at = None
         job.draft = None
         job.draft_updated_at = None
+        if not should_review(
+            float(ctx.config.job_rules.get("review_rate", 1.0)),
+            is_gold=job.is_gold,
+            has_unsure=job.has_unsure,
+            rework_count=job.rework_count,
+        ):
+            # Not picked for review: accepted straight away, with a row that says so.
+            self._set_status(job, JobStatus.ACCEPTED)
+            job.closed_at = now
+            await self.work.add(
+                Review(
+                    id=uuid.uuid4(),
+                    job_id=job.id,
+                    submission_id=submission.id,
+                    reviewer_id=None,
+                    kind=ReviewKind.AUTO_ACCEPT,
+                    decision=Decision.ACCEPT,
+                    reason="Không được chọn vào mẫu review",
+                )
+            )
         await self.audit.record(
             actor=user,
             action="job.submit",

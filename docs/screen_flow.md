@@ -333,4 +333,6 @@ Vẫn dùng `/work` hoặc `/review` như thành viên bình thường.
 
 Đã có (`fe/src/app/`): đăng nhập, kích hoạt, Việc cần làm, tài khoản, Gán nhãn và Chấm (hàng đợi và màn làm việc), HR (người dùng, đội, quyền sắp hết hạn, audit), Project (danh sách, tạo, workspace với các tab Tổng quan, Thành viên và đội, Guideline kèm mã lỗi, Dữ liệu kèm wizard upload, Cấu hình job kèm xem trước, Task, Job, Escalation), chi tiết task kèm nghiệm thu.
 
-Chưa có: trang trưởng nhóm (`/teams/[id]`), khiếu nại, export. `next build` và lint sạch; chưa được kiểm thử bằng trình duyệt.
+Đã thêm phần P1: trang trưởng nhóm (`/teams/[id]`), khiếu nại (annotator gửi ở hàng đợi, PM/PO xử lý ở tab Khiếu nại), đổi quyết định (owner, ở màn chấm), gold job và export (trang chi tiết task), tab Chất lượng và Nhật ký, chất lượng cá nhân ở trang tài khoản, trang Hệ thống.
+
+Chưa có: service account, calibration, break-glass, thông báo (đã chốt không có chuông). `next build` và lint sạch; đã chạy kịch bản trình duyệt Chrome thật (xem `docs/` mục kiểm thử trong báo cáo cuối).

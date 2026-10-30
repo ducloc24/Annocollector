@@ -312,6 +312,6 @@ Quyết định 1, 4, 8 đã cập nhật vào `database_design.md` và `api_des
 | --- | --- |
 | 0–1 | Xong |
 | 2–7 | Xong; `be/scripts/smoke_flow.py` chạy trọn vòng (HR tạo người và đội, PO thiết lập project, annotator và reviewer làm kèm một vòng reject, PO ký nghiệm thu): 59/59 đạt trên Supabase |
-| 8 (P1) | Chưa làm: khiếu nại, override, gold job, quality, export, trưởng nhóm, tác vụ nền, thông báo |
+| 8 (P1) | Xong: khiếu nại, override, gold job, báo cáo chất lượng, export, trưởng nhóm, cài đặt hệ thống, tác vụ nền (trả job hết lease), lấy mẫu review. Chưa làm (P2 và ngoài phạm vi đã chốt): service account, calibration, sửa nhãn trực tiếp, break-glass, xung đột lợi ích, thông báo (đã chốt không làm chuông) |
 
 Ghi chú vận hành: mỗi truy vấn tới Supabase (eu-west-1) mất khoảng 0,5 giây từ Việt Nam, nên mỗi request mất vài giây; đặt project Supabase ở `ap-southeast-1` sẽ cải thiện rõ nhất.

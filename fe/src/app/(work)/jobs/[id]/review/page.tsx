@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { useAuth } from "@/components/auth-provider";
 import { StepsView } from "@/components/step-view";
 import { Badge, Button, Field, Modal, Notice, Select, Spinner, Textarea, Input, formatDate } from "@/components/ui";
 import { ApiError, errorMessage, get, post } from "@/lib/api";
@@ -40,6 +41,9 @@ export default function ReviewPage() {
   const [done, setDone] = useState<{ status: string } | null>(null);
   const [showGuideline, setShowGuideline] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { projects } = useAuth();
+  const [override, setOverride] = useState<{ decision: "accept" | "reject"; reason: string }>({ decision: "reject", reason: "" });
+  const [overrideDone, setOverrideDone] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -87,6 +91,20 @@ export default function ReviewPage() {
       { item_id: item.id, target: selected, reason_code: adding.reason_code, severity: adding.severity, note: adding.note || null },
     ]);
     setAdding({ reason_code: "", severity: "major", note: "" });
+  }
+
+  async function submitOverride() {
+    if (!view) return;
+    setBusy(true);
+    setProblems([]);
+    try {
+      const job = await post<{ status: string }>(`/projects/${view.job.project_id}/jobs/${id}/override`, override);
+      setOverrideDone(job.status);
+    } catch (e) {
+      setProblems([errorMessage(e)]);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submit() {
@@ -291,11 +309,33 @@ export default function ReviewPage() {
               <p className="text-xs text-zinc-500">Quyết định không sửa được sau khi lưu. Không chắc vì guideline mơ hồ thì chọn Escalate.</p>
             </>
           ) : (
-            <Notice tone="blue">
-              {view.my_role === "reviewer"
-                ? "Đây là vòng đã chấm; chỉ xem."
-                : "Bạn đang xem chỉ đọc."}
-            </Notice>
+            <>
+              <Notice tone="blue">
+                {view.my_role === "reviewer"
+                  ? "Đây là vòng đã chấm; chỉ xem."
+                  : "Bạn đang xem chỉ đọc."}
+              </Notice>
+              {view.my_role === "coordinator" &&
+                projects.find((p) => p.id === view.job.project_id)?.my_permissions.includes("review.override") &&
+                ["accepted", "accepted_with_fix", "rejected"].includes(view.job.status) &&
+                (overrideDone ? (
+                  <Notice tone="green">Đã đổi quyết định; job giờ ở trạng thái “{overrideDone}”.</Notice>
+                ) : (
+                  <div className="flex flex-col gap-3 rounded-md border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
+                    <p className="text-sm font-medium">Đổi quyết định của reviewer (owner)</p>
+                    <p className="text-xs text-zinc-500">Tạo bản ghi mới, bản cũ được giữ. Bắt buộc có lý do và được ghi audit.</p>
+                    <Select value={override.decision} onChange={(e) => setOverride({ ...override, decision: e.target.value as "accept" | "reject" })}>
+                      <option value="accept">Chấp nhận job</option>
+                      <option value="reject">Trả lại cho annotator</option>
+                    </Select>
+                    <Textarea rows={3} placeholder="Lý do" value={override.reason} onChange={(e) => setOverride({ ...override, reason: e.target.value })} />
+                    {problems.length > 0 && <Notice>{problems.join("; ")}</Notice>}
+                    <Button variant="danger" disabled={busy || override.reason.trim().length < 3} onClick={() => void submitOverride()}>
+                      Đổi quyết định
+                    </Button>
+                  </div>
+                ))}
+            </>
           )}
         </aside>
       </div>

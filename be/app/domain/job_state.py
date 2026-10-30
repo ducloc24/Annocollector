@@ -9,13 +9,15 @@ TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
     S.UNASSIGNED: frozenset({S.ASSIGNED, S.IN_PROGRESS}),
     S.ASSIGNED: frozenset({S.IN_PROGRESS, S.UNASSIGNED, S.ASSIGNED}),
     S.IN_PROGRESS: frozenset({S.SUBMITTED, S.UNASSIGNED, S.ASSIGNED}),
-    S.SUBMITTED: frozenset({S.IN_REVIEW}),
+    # SUBMITTED -> ACCEPTED is review sampling: a job that is not picked for review.
+    S.SUBMITTED: frozenset({S.IN_REVIEW, S.ACCEPTED}),
     S.IN_REVIEW: frozenset({S.ACCEPTED, S.ACCEPTED_WITH_FIX, S.REJECTED, S.ESCALATED, S.SUBMITTED}),
-    S.REJECTED: frozenset({S.IN_PROGRESS, S.UNASSIGNED, S.ASSIGNED}),
+    S.REJECTED: frozenset({S.IN_PROGRESS, S.UNASSIGNED, S.ASSIGNED, S.ACCEPTED}),
     S.ESCALATED: frozenset({S.ACCEPTED, S.REJECTED}),
     # Re-review sends an accepted job back to the review queue.
-    S.ACCEPTED: frozenset({S.SUBMITTED}),
-    S.ACCEPTED_WITH_FIX: frozenset({S.SUBMITTED}),
+    # An owner override can also flip an accepted job back to rejected.
+    S.ACCEPTED: frozenset({S.SUBMITTED, S.REJECTED}),
+    S.ACCEPTED_WITH_FIX: frozenset({S.SUBMITTED, S.REJECTED, S.ACCEPTED}),
 }
 
 

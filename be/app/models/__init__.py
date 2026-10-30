@@ -2,6 +2,7 @@
 
 from app.db.base import Base
 from app.models.audit import AuditEvent
+from app.models.ops import Appeal, GoldAnswer, SystemSetting
 from app.models.project import (
     DatasetVersion,
     GuidelineVersion,
@@ -35,9 +36,11 @@ from app.models.work import (
 
 __all__ = [
     "Annotation",
+    "Appeal",
     "AuditEvent",
     "Base",
     "DatasetVersion",
+    "GoldAnswer",
     "GuidelineVersion",
     "Item",
     "Job",
@@ -56,6 +59,7 @@ __all__ = [
     "RolePermission",
     "RoleRequirement",
     "Submission",
+    "SystemSetting",
     "Task",
     "Team",
     "TeamMember",

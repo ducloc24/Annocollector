@@ -147,6 +147,8 @@ review, tiến độ và phân quyền dùng chung.
 | **Double review** | Cho reviewer thứ hai chấm độc lập một mẫu ngẫu nhiên job reviewer đầu đã accept, để kiểm tra chính reviewer. |
 | **Golden example** | Ví dụ đúng/sai mẫu cho từng tiêu chí trong rubric. |
 | **Coaching** | Buổi hướng dẫn khi annotator lặp lại cùng một `reason_code`, thay cho chỉ trừ điểm. |
+| **Auto-accept** | Job không được chọn vào mẫu review (khi `review_rate` < 1) nên tự chuyển `accepted`, kèm một dòng review `auto_accept` không có reviewer. |
+| **Coaching flag** | Cờ "nên kèm cặp" trên trang trưởng nhóm: một annotator bị ghi cùng một mã lỗi từ hai lần trở lên. |
 | **Gold job** | Job đã có đáp án chuẩn, trộn vào hàng đợi để đo chất lượng và phát hiện gian lận. Không để lộ cho annotator. |
 | **Sampling / lấy mẫu** | Chỉ review một phần job thay vì 100%, chọn ngẫu nhiên. |
 | **Acceptance / nghiệm thu** | PO duyệt cả task: kiểm tra tỷ lệ pass, lỗi lặp, mẫu ngẫu nhiên 5–10%. |

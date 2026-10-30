@@ -5,12 +5,15 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { AppealsTab } from "@/components/project/appeals-tab";
+import { AuditTab } from "@/components/project/audit-tab";
 import { ConfigTab } from "@/components/project/config-tab";
 import { DataTab } from "@/components/project/data-tab";
 import { GuidelineTab } from "@/components/project/guideline-tab";
 import { JobsTab } from "@/components/project/jobs-tab";
 import { OverviewTab } from "@/components/project/overview-tab";
 import { PeopleTab } from "@/components/project/people-tab";
+import { QualityTab } from "@/components/project/quality-tab";
 import { TasksTab } from "@/components/project/tasks-tab";
 import { Badge, Loaded, PageHeader, Tabs, useAsync } from "@/components/ui";
 import { get } from "@/lib/api";
@@ -36,6 +39,9 @@ function Workspace() {
           { id: "tasks", label: "Task", show: has("task.manage") || has("task.accept") },
           { id: "jobs", label: "Job", show: has("job.assign") },
           { id: "escalations", label: "Escalation", show: has("appeal.decide") },
+          { id: "appeals", label: "Khiếu nại", show: has("appeal.decide") },
+          { id: "quality", label: "Chất lượng", show: has("quality.read") && project.my_roles.some((r) => r !== "annotator" && r !== "reviewer") },
+          { id: "audit", label: "Nhật ký", show: has("audit.read") },
         ].filter((t) => t.show);
         const requested = params.get("tab") ?? "overview";
         const active = tabs.some((t) => t.id === requested) ? requested : "overview";
@@ -72,6 +78,9 @@ function Workspace() {
             {active === "tasks" && <TasksTab project={project} />}
             {active === "jobs" && <JobsTab project={project} mode="jobs" stuck={params.get("stuck") === "1"} />}
             {active === "escalations" && <JobsTab project={project} mode="escalations" />}
+            {active === "appeals" && <AppealsTab project={project} />}
+            {active === "quality" && <QualityTab project={project} />}
+            {active === "audit" && <AuditTab project={project} />}
           </>
         );
       }}

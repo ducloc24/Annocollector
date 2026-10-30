@@ -38,8 +38,9 @@ def normalize_rules(rules: Any) -> tuple[dict[str, Any], list[str]]:
             errors.append(f"{key} must be an integer between {low} and {high}")
     if merged["assignment_mode"] not in ("pull", "push_only"):
         errors.append("assignment_mode must be 'pull' or 'push_only'")
-    if merged["review_rate"] != 1.0:
-        errors.append("review_rate must be 1.0 for now (sampling is not supported yet)")
+    rate = merged["review_rate"]
+    if isinstance(rate, bool) or not isinstance(rate, int | float) or not 0.05 <= rate <= 1.0:
+        errors.append("review_rate must be between 0.05 and 1.0")
     return merged, errors
 
 

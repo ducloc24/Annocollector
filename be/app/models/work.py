@@ -35,6 +35,9 @@ class ReviewKind(StrEnum):
     REVIEW = "review"
     ESCALATION_DECISION = "escalation_decision"
     RE_REVIEW = "re_review"
+    OVERRIDE = "override"
+    APPEAL_DECISION = "appeal_decision"
+    AUTO_ACCEPT = "auto_accept"
 
 
 class Decision(StrEnum):
@@ -151,7 +154,8 @@ class Review(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
 
     job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id"), index=True, nullable=False)
     submission_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("submissions.id"))
-    reviewer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # Null for auto-accepted jobs (review sampling).
+    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     supersedes_review_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("reviews.id"))
     decision: Mapped[str] = mapped_column(String(24), nullable=False)

@@ -147,6 +147,8 @@ review, tiến độ và phân quyền dùng chung.
 | **Double review** | Cho reviewer thứ hai chấm độc lập một mẫu ngẫu nhiên job reviewer đầu đã accept, để kiểm tra chính reviewer. |
 | **Golden example** | Ví dụ đúng/sai mẫu cho từng tiêu chí trong rubric. |
 | **Coaching** | Buổi hướng dẫn khi annotator lặp lại cùng một `reason_code`, thay cho chỉ trừ điểm. |
+| **Auto-accept** | Job không được chọn vào mẫu review (khi `review_rate` < 1) nên tự chuyển `accepted`, kèm một dòng review `auto_accept` không có reviewer. |
+| **Coaching flag** | Cờ "nên kèm cặp" trên trang trưởng nhóm: một annotator bị ghi cùng một mã lỗi từ hai lần trở lên. |
 | **Gold job** | Job đã có đáp án chuẩn, trộn vào hàng đợi để đo chất lượng và phát hiện gian lận. Không để lộ cho annotator. |
 | **Sampling / lấy mẫu** | Chỉ review một phần job thay vì 100%, chọn ngẫu nhiên. |
 | **Acceptance / nghiệm thu** | PO duyệt cả task: kiểm tra tỷ lệ pass, lỗi lặp, mẫu ngẫu nhiên 5–10%. |
@@ -216,10 +218,15 @@ Tiến độ chỉ đếm job `accepted`, không đếm `submitted`.
 | **SLA** | Thời hạn xử lý tối đa cho từng bước (làm, review, nghiệm thu). |
 | **Action endpoint** | Endpoint thực hiện một hành động đổi trạng thái (`POST /jobs/{id}/submit`) thay vì sửa trực tiếp trường `status`. |
 | **`unassigned`** | Trạng thái job trong pool, chưa có người nhận. |
+| **Workspace project** | Trang `/projects/[id]` gom mọi thứ của một project (dữ liệu, cấu hình, task, job, tiến độ) theo tab; tab hiện theo vai trò. |
+| **Checklist thiết lập** | Danh sách bước PO cần làm để project chạy được: guideline, đội, dữ liệu, cấu hình job, task, kích hoạt. |
+| **Màn làm việc** | Màn gán nhãn hoặc màn chấm, chiếm toàn trang, không có menu. |
 | **State machine** | Module duy nhất định nghĩa các trạng thái và chuyển hợp lệ của job hoặc task. Mọi đổi trạng thái đi qua đây. |
 | **Permission resolver** | Thành phần backend trả lời "user này có permission này trên project này không", theo đúng thứ tự kiểm tra quyền. |
 | **Seed** | Dữ liệu khởi tạo đưa vào DB qua migration, ví dụ danh mục role, permission và ma trận quyền. |
 | **Storage adapter** | Lớp trung gian lưu và đọc file (ổ đĩa cục bộ, Supabase Storage, S3) để đổi nơi lưu mà không sửa nghiệp vụ. |
+| **R2** | Dịch vụ lưu file của Cloudflare, tương thích S3 API. Dùng để lưu file dataset gốc. |
+| **Presigned URL** | Link tạm thời có chữ ký, cho phép tải lên hoặc tải về một file cụ thể trong thời gian ngắn mà không cần mở bucket công khai. |
 | **Draft (bản nháp)** | Nhãn annotator đang làm dở, tự lưu, chưa nộp. Khác với submission. |
 | **Tác vụ nền (background task)** | Tác vụ chạy định kỳ hoặc ngoài request: trả job hết lease về pool, cảnh báo stuck, parse file lớn. |
 | **Audit log / `audit_events`** | Nhật ký append-only mọi hành động quan trọng: ai, làm gì, trên đối tượng nào, trước và sau, lý do. |

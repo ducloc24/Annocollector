@@ -141,7 +141,7 @@ erDiagram
     role_permissions {
         uuid role_id FK
         uuid permission_id FK
-        string limit "all | project | assigned | own"
+        string limit_scope "all | project | assigned | own | team | rbac"
     }
     user_platform_roles {
         uuid id PK
@@ -182,7 +182,7 @@ erDiagram
 | `user_action_tokens` | Token dùng một lần cho kích hoạt tài khoản và đặt lại mật khẩu (lưu hash) |
 | `roles` | Danh mục role. `scope` cho biết role dùng ở cấp platform hay project. Role hệ thống (`is_system`) không xoá được |
 | `permissions` | Danh mục permission, đặt tên `resource.action` |
-| `role_permissions` | Role nào có permission nào, kèm `limit` (phạm vi dữ liệu) |
+| `role_permissions` | Role nào có permission nào, kèm `limit_scope` (phạm vi dữ liệu; tên cột tránh từ khoá SQL `limit`). Giá trị `rbac` chỉ dùng cho `audit.read` của `hr_admin`: chỉ đọc sự kiện về user và role |
 | `user_platform_roles` | Gán role platform cho user (HR cấp) |
 | `project_members` | Gán role project cho user trong một project (PO cấp) |
 | `role_requirements` | Role project nào đòi role platform nào (thay bảng "platform role tối thiểu" viết cứng) |
@@ -452,7 +452,7 @@ erDiagram
         uuid id PK
         uuid project_id FK
         int version
-        string storage_path
+        string storage_path "key của file gốc trên R2"
         string checksum
         int item_count
         string parser "tên trong parser registry"
@@ -1003,8 +1003,8 @@ DB chỉ giữ khoá ngoại, `NOT NULL` và unique cơ bản.
 3. **Danh mục `reason_code`** dùng chung giữa annotator và reviewer hay tách?
 4. ~~Phiên đăng nhập~~: **đã chốt** JWT (access 15 phút + refresh token lưu DB +
    `token_version`).
-5. **Lưu file lớn** (ảnh, audio, dataset): object storage nào, `payload` chỉ giữ
-   đường dẫn.
+5. ~~Lưu file lớn~~: **đã chốt** Cloudflare R2, bucket không công khai, upload bằng
+   presigned URL. `payload` của ảnh/audio sau này chỉ giữ key trên R2.
 6. **Tách `annotations.value` ra bảng theo từng item riêng** nếu sau này thống kê
    theo nhãn nhiều; hiện để jsonb trong `annotations`.
 7. **Phân quyền xem dữ liệu của `hr_admin`**: không có endpoint nào trả về nội dung

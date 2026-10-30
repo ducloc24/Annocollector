@@ -15,7 +15,7 @@
 | Mục | Quy ước |
 | --- | --- |
 | Prefix | `/api/v1` (`settings.API_V1_PREFIX`) |
-| Định dạng | JSON; upload file dùng `multipart/form-data` |
+| Định dạng | JSON. File dataset **không** đi qua backend: frontend xin presigned URL rồi `PUT` thẳng lên Cloudflare R2 (mục 3.8) |
 | Xác thực | `Authorization: Bearer <access_token>` (xem mục 2) |
 | ID | uuid |
 | Thời gian | ISO 8601, UTC, ví dụ `2026-10-30T08:15:00Z` |
@@ -57,7 +57,7 @@
 | **Refresh token** | Chuỗi ngẫu nhiên, hạn **7 ngày**, lưu **hash** trong bảng `refresh_tokens`. Gửi bằng cookie `httpOnly`, `Secure`, `SameSite=Strict`, `Path=/api/v1/auth` |
 | Xoay vòng | Mỗi lần refresh cấp refresh token mới và thu hồi token cũ. Dùng lại token đã bị thay thế thì thu hồi cả **family** (dấu hiệu bị đánh cắp) |
 | **Kiểm tra mỗi request** | Giải mã access token, rồi đọc `users.status` và `users.token_version` (cùng truy vấn với kiểm tra quyền). `status ≠ active` hoặc `ver ≠ token_version` thì trả 401 `token_revoked` |
-| Thu hồi ngay | Offboarding, thu hồi role, đổi mật khẩu: tăng `token_version` và thu hồi mọi refresh token của user |
+| Thu hồi ngay | Offboarding và đổi mật khẩu: tăng `token_version` và thu hồi mọi refresh token của user. Thu hồi một role không cần đổi token: quyền được đọc lại từ DB ở mỗi request nên mất hiệu lực ngay |
 
 ### 2.2 Luồng
 
@@ -104,7 +104,7 @@ không cần đăng nhập. Path tính sau prefix `/api/v1`.
 | --- | --- | --- | --- | --- |
 | POST | `/auth/login` | public | ALL-01 | Đăng nhập bằng email + mật khẩu. Trả access token, đặt cookie refresh |
 | POST | `/auth/refresh` | public (cookie) | ALL-01 | Đổi refresh token lấy access token mới, xoay vòng refresh token |
-| POST | `/auth/logout` | — | ALL-01 | Thu hồi refresh token hiện tại, xoá cookie. 204 |
+| POST | `/auth/logout` | public (cookie) | ALL-01 | Thu hồi refresh token hiện tại, xoá cookie. 204. Không cần access token để đăng xuất được cả khi access token đã hết hạn |
 | POST | `/auth/activate` | public | HR-01 | Kích hoạt tài khoản bằng token một lần trong email, đặt mật khẩu |
 | POST | `/auth/change-password` | — | ALL-03 | Đổi mật khẩu; tăng `token_version`, thu hồi các phiên khác, trả token mới |
 
@@ -128,7 +128,8 @@ Login sai mật khẩu và tài khoản không tồn tại trả **cùng một l
 
 | Method | Path | Quyền | Story | Mô tả |
 | --- | --- | --- | --- | --- |
-| POST | `/users` | `user.manage (all)` | HR-01 | Tạo user (họ tên, email, mã nhân viên, loại hợp đồng). Gửi email kích hoạt. Không chọn project |
+| POST | `/users` | `user.manage (all)` | HR-01 | Tạo user (họ tên, email, mã nhân viên, loại hợp đồng). **Trả `activation_url`** (dùng một lần, hạn 72 giờ) để HR gửi cho người dùng; chưa có gửi email. Không chọn project |
+| POST | `/users/{user_id}/activation-link` | `user.manage (all)` | HR-01 | Cấp link kích hoạt mới khi link cũ hết hạn; link cũ mất hiệu lực. Người đã kích hoạt thì 409 `already_activated` |
 | GET | `/users` | `user.manage (all)` | HR-07 | Tìm theo `q` (tên, email, mã), lọc `status`, `employment_type`, `role` |
 | GET | `/users/{user_id}` | `user.manage (all)` | HR-07 | Chi tiết user và role platform. Không có thông tin project chi tiết |
 | POST | `/users/{user_id}/disable` | `user.manage (all)` | HR-04 | Offboarding: disable, thu hồi mọi role, vô hiệu membership, tăng `token_version`, thu hồi refresh token, trả job dở về pool. Bắt buộc `reason` |
@@ -193,8 +194,9 @@ dấu cần xử lý).
 
 | Method | Path | Quyền | Story | Mô tả |
 | --- | --- | --- | --- | --- |
-| POST | `/projects/{project_id}/datasets/preview` | `dataset.upload (P)` | PO-05 | Multipart: `file`, `parser`, `parser_options`. Parse vài dòng đầu, trả item mẫu và lỗi. **Không lưu** |
-| POST | `/projects/{project_id}/datasets` | `dataset.upload (P)` | PO-04, PO-05 | Multipart như trên. Parse toàn bộ, tạo dataset version mới. Lỗi quá ngưỡng thì không tạo, trả báo cáo lỗi |
+| POST | `/projects/{project_id}/datasets/upload-url` | `dataset.upload (P)` | PO-04 | Body `{filename, size}`. Trả `{upload_key, url, expires_in}`: presigned URL để `PUT` file lên R2 (hạn 15 phút). Kiểm tra `size` không vượt giới hạn |
+| POST | `/projects/{project_id}/datasets/preview` | `dataset.upload (P)` | PO-05 | Body `{upload_key, parser, parser_options}`. Đọc vài dòng đầu từ R2, trả item mẫu và lỗi. **Không tạo version** |
+| POST | `/projects/{project_id}/datasets` | `dataset.upload (P)` | PO-04, PO-05 | Body như preview. Đọc toàn bộ file từ R2, parse, tạo dataset version mới (lưu `storage_path` = `upload_key`). Lỗi quá ngưỡng thì không tạo, trả báo cáo lỗi |
 | GET | `/projects/{project_id}/datasets` | `dataset.read (P)` hoặc `progress.read (P)` | PO-04 | Danh sách version: số item, checksum, parser |
 | GET | `/projects/{project_id}/datasets/{version}` | `dataset.read (P)` hoặc `progress.read (P)` | PO-04 | Chi tiết version kèm báo cáo parse |
 | GET | `/projects/{project_id}/datasets/{version}/items` | `dataset.read (P)` | PO-04 | Liệt kê item (có `payload`). Annotator và reviewer không dùng endpoint này, họ đọc item qua job |
@@ -343,20 +345,38 @@ Kèm header `Set-Cookie: refresh_token=...; HttpOnly; Secure; SameSite=Strict; P
 
 ### 4.2 Upload dataset với field mapping
 
-```http
-POST /api/v1/projects/{project_id}/datasets
-Content-Type: multipart/form-data
+Bước 1: xin presigned URL.
 
-file=@trajectories.jsonl
-parser=jsonl_chat
-parser_options={
-  "user_message": "$.input",
-  "steps": "$.trace[*]",
-  "step_type": "$.type",
-  "tool_name": "$.name",
-  "tool_args": "$.arguments",
-  "tool_result": "$.output",
-  "tools": "$.tools[*]"
+```json
+POST /api/v1/projects/{project_id}/datasets/upload-url
+{ "filename": "trajectories.jsonl", "size": 52428800 }
+
+200
+{
+  "upload_key": "projects/9a1c.../uploads/3f2e....jsonl",
+  "url": "https://3b825e294fc915fdb8b01779ef494a84.r2.cloudflarestorage.com/annocolector/projects/9a1c.../uploads/3f2e....jsonl?X-Amz-Signature=...",
+  "expires_in": 900
+}
+```
+
+Bước 2: frontend `PUT` file lên `url` (không qua backend).
+
+Bước 3: tạo dataset version.
+
+```json
+POST /api/v1/projects/{project_id}/datasets
+{
+  "upload_key": "projects/9a1c.../uploads/3f2e....jsonl",
+  "parser": "jsonl_chat",
+  "parser_options": {
+    "user_message": "$.input",
+    "steps": "$.trace[*]",
+    "step_type": "$.type",
+    "tool_name": "$.name",
+    "tool_args": "$.arguments",
+    "tool_result": "$.output",
+    "tools": "$.tools[*]"
+  }
 }
 ```
 
@@ -626,6 +646,8 @@ sequenceDiagram
     Note over PO,API: HR đã lập đội (POST /teams, /teams/{id}/members)
     PO->>API: POST /projects/{id}/teams (gắn đội)
     PO->>API: POST /projects/{id}/guidelines
+    PO->>API: POST /projects/{id}/datasets/upload-url
+    Note over PO: PUT file lên R2 bằng presigned URL
     PO->>API: POST /projects/{id}/datasets/preview
     PO->>API: POST /projects/{id}/datasets
     PO->>API: POST /projects/{id}/job-configs
@@ -688,6 +710,7 @@ sequenceDiagram
 | `self_check_incomplete` | 400 | Chưa tick đủ self-check |
 | `reason_required` | 400 | Thiếu lý do ở thao tác bắt buộc lý do |
 | `file_too_large` | 413 | File upload vượt giới hạn |
+| `upload_not_found` | 400 | `upload_key` không tồn tại trên R2, đã hết hạn, hoặc không thuộc project này |
 | `rate_limited` | 429 | Thử đăng nhập quá nhiều lần |
 | `wip_limit_reached` | 409 | Lấy việc khi đang giữ đủ số job tối đa |
 | `task_has_no_team` | 409 | Kích hoạt task chưa giao cho đội |
@@ -710,3 +733,30 @@ sequenceDiagram
 | 5 | Parse file lớn bằng tác vụ nền | `POST /datasets` trả `202` kèm id để theo dõi thay vì `201` |
 | 6 | Mức phân loại dữ liệu có hạn chế thêm ai được xem không | Thêm điều kiện ở `GET /jobs/{id}` và các endpoint đọc item |
 | 7 | ~~Đội có trưởng nhóm không~~ **Đã chốt:** có, chỉ xem số liệu (3.18). Còn mở: trưởng nhóm giao tay job | Thêm endpoint giao tay trong đội nếu chốt |
+
+---
+
+## 9. Khác biệt giữa thiết kế và bản cài đặt
+
+Bản cài đặt (`be/app/api/v1/endpoints/`) khác thiết kế ở các điểm sau; OpenAPI tại `/docs` là nguồn đúng.
+
+| Chỗ | Thiết kế | Cài đặt |
+| --- | --- | --- |
+| Thu hồi job | `POST /jobs/{id}/unassign` | `POST /projects/{project_id}/jobs/{job_id}/unassign` |
+| Quyết định escalation | `POST /jobs/{id}/escalation-decision` | `POST /projects/{project_id}/jobs/{job_id}/escalation-decision` |
+| Đổi người làm | `POST /jobs/{id}/reassign` | Dùng lại `POST /projects/{id}/jobs/assign` (giao cho người khác là đổi người) |
+| Hàng đợi cá nhân | `GET /me/jobs`, `GET /me/reviews` | `GET /me/queues`: theo từng project, gồm job của tôi, job đang chấm, số job chờ chấm |
+| Upload khi chưa cấu hình R2 | — | `PUT /storage/upload` nhận file vào thư mục cục bộ (chỉ dev); URL ký bằng HMAC |
+| Xem item | `GET /jobs/{id}` | Cùng endpoint trả cả item, guideline đã ghim, label schema, mã lỗi, bản nháp (chỉ người làm) và các vòng (người khác) |
+| Re-review | Mở cho task hoặc danh sách job | Chỉ danh sách job (`job_ids`) |
+| Khiếu nại | `POST /jobs/{id}/appeals`, `GET /projects/{id}/appeals`, `POST /appeals/{id}/decision` | `POST /jobs/{id}/appeals`, `GET /projects/{project_id}/appeals`, `GET /me/appeals`, `POST /projects/{project_id}/appeals/{appeal_id}/decision` với `action` = `upheld`, `overturned` hoặc `forward` |
+| Override | `POST /jobs/{id}/override` | `POST /projects/{project_id}/jobs/{job_id}/override` |
+| Gold job | Đánh dấu job và nhập đáp án | `POST /projects/{project_id}/gold-jobs` nhân bản một job đã đạt; nhãn đã chấp nhận của job gốc là đáp án chuẩn |
+| Chất lượng | `GET /projects/{id}/quality`, `GET /me/quality` | Như thiết kế; annotator và reviewer chỉ thấy dòng của chính mình |
+| Export | `POST .../exports` rồi `GET .../exports/{id}` | `GET /projects/{project_id}/tasks/{task_id}/export` trả JSONL ngay (chỉ task đã giao) |
+| Trưởng nhóm | `GET /teams/{id}/overview`, `/quality`, `/alerts` | Như thiết kế; chỉ người có cờ `is_lead` của đúng đội (người khác nhận 404) |
+| Cài đặt hệ thống | `GET/PATCH /system/settings` | Như thiết kế; chỉ có 3 khoá: `appeal_window_days`, `stuck_hours`, `max_upload_mb` |
+| Nhật ký project | — | `GET /projects/{project_id}/audit-events` cho owner |
+| Tác vụ nền | Job nền | Vòng lặp trong lifespan, 5 phút một lần trả job hết lease về hàng đợi (tắt bằng `BACKGROUND_TASKS=false`) |
+| Lấy mẫu review | `review_rate` < 1 | Hỗ trợ `review_rate` từ 0.05 đến 1. Job không được chọn tự động `accepted` kèm một dòng review `auto_accept`; job có bước không chắc, job sửa lại và gold job luôn được chấm |
+| Chưa làm | `/me/projects`, service account (AD-02), calibration (RV-06), sửa nhãn trực tiếp (RV-07), break-glass (AD-04), xung đột lợi ích (PM-09), thông báo | Chưa có |

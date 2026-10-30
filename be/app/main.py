@@ -1,14 +1,17 @@
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import models  # noqa: F401  (register ORM models on Base.metadata)
 from app.api.v1.router import api_router
+from app.core.background import lease_sweeper
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
+from app.core.request_context import REQUEST_ID_HEADER, RequestContextMiddleware
 from app.db.base import Base
 from app.db.session import engine
 
@@ -20,7 +23,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     if settings.AUTO_CREATE_TABLES:
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+    sweeper = asyncio.create_task(lease_sweeper()) if settings.BACKGROUND_TASKS else None
     yield
+    if sweeper is not None:
+        sweeper.cancel()
+        with suppress(asyncio.CancelledError):
+            await sweeper
     await engine.dispose()
 
 
@@ -37,7 +45,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[REQUEST_ID_HEADER],
 )
+app.add_middleware(RequestContextMiddleware)
 
 register_exception_handlers(app)
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)

@@ -1,7 +1,6 @@
 from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
@@ -10,10 +9,14 @@ engine_kwargs: dict = {"echo": settings.DB_ECHO, "pool_pre_ping": True}
 if settings.is_sqlite:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 elif settings.is_supabase:
-    # Supabase transaction pooler (Supavisor): pooling happens on the server,
-    # and prepared statements are not supported across pooled connections.
+    # Supabase transaction pooler (Supavisor): prepared statements are not supported
+    # across pooled connections. Keep a small client-side pool anyway: opening a TLS
+    # connection to a remote region on every request costs seconds.
     engine_kwargs.update(
-        poolclass=NullPool,
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_recycle=300,
+        pool_pre_ping=False,
         connect_args={
             "statement_cache_size": 0,
             "prepared_statement_cache_size": 0,

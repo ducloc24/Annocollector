@@ -1,0 +1,24 @@
+{
+  "name": "annocollector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monorepo: FastAPI backend + Next.js frontend",
+  "scripts": {
+    "setup": "npm --prefix fe install && uv --directory be sync",
+    "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1",
+    "dev": "concurrently -n be,fe -c blue,green \"npm:dev:be\" \"npm:dev:fe\"",
+    "dev:be": "uv --directory be run alembic upgrade head && uv --directory be run uvicorn app.main:app --reload --port 8000",
+    "dev:fe": "npm --prefix fe run dev",
+    "build": "npm --prefix fe run build",
+    "start:fe": "npm --prefix fe run start",
+    "lint": "uv --directory be run ruff check app tests && npm --prefix fe run lint",
+    "format": "uv --directory be run ruff format app tests",
+    "test": "uv --directory be run pytest tests",
+    "typecheck": "uv --directory be run mypy app && npm --prefix fe run typecheck",
+    "db:migrate": "uv --directory be run alembic upgrade head",
+    "db:revision": "uv --directory be run alembic revision --autogenerate -m"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

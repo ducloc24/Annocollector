@@ -1,0 +1,19 @@
+services:
+  be:
+    build: ./be
+    env_file:
+      - .env
+    environment:
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    ports:
+      - "8000:8000"
+
+  fe:
+    build:
+      context: ./fe
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    ports:
+      - "3000:3000"
+    depends_on:
+      - be

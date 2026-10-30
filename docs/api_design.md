@@ -738,16 +738,16 @@ sequenceDiagram
 
 ## 9. Khác biệt giữa thiết kế và bản cài đặt
 
-Bản cài đặt () khác thiết kế ở các điểm sau; OpenAPI tại  là nguồn đúng.
+Bản cài đặt (`be/app/api/v1/endpoints/`) khác thiết kế ở các điểm sau; OpenAPI tại `/docs` là nguồn đúng.
 
 | Chỗ | Thiết kế | Cài đặt |
 | --- | --- | --- |
-| Thu hồi job |  |  |
-| Quyết định escalation |  |  |
-| Đổi người làm |  | Dùng lại  (giao cho người khác là đổi người) |
-| Hàng đợi cá nhân | ,  | : theo từng project, gồm job của tôi, job đang chấm, số job chờ chấm |
-| Upload khi chưa cấu hình R2 | — |  nhận file vào thư mục cục bộ (chỉ dev); URL ký bằng HMAC |
-| Xem item |  | Cùng endpoint trả cả item, guideline đã ghim, label schema, mã lỗi, bản nháp (chỉ người làm) và các vòng (người khác) |
-| Re-review | Mở cho task hoặc danh sách job | Chỉ danh sách job () |
-| Chưa làm | , , các endpoint P1 (khiếu nại, override, gold job, export, trưởng nhóm) | Chưa có |
-| Lấy mẫu review |  < 1 | Chỉ nhận 1.0 (review 100%) |
+| Thu hồi job | `POST /jobs/{id}/unassign` | `POST /projects/{project_id}/jobs/{job_id}/unassign` |
+| Quyết định escalation | `POST /jobs/{id}/escalation-decision` | `POST /projects/{project_id}/jobs/{job_id}/escalation-decision` |
+| Đổi người làm | `POST /jobs/{id}/reassign` | Dùng lại `POST /projects/{id}/jobs/assign` (giao cho người khác là đổi người) |
+| Hàng đợi cá nhân | `GET /me/jobs`, `GET /me/reviews` | `GET /me/queues`: theo từng project, gồm job của tôi, job đang chấm, số job chờ chấm |
+| Upload khi chưa cấu hình R2 | — | `PUT /storage/upload` nhận file vào thư mục cục bộ (chỉ dev); URL ký bằng HMAC |
+| Xem item | `GET /jobs/{id}` | Cùng endpoint trả cả item, guideline đã ghim, label schema, mã lỗi, bản nháp (chỉ người làm) và các vòng (người khác) |
+| Re-review | Mở cho task hoặc danh sách job | Chỉ danh sách job (`job_ids`) |
+| Chưa làm | `/system/settings`, `/me/projects`, các endpoint P1 (khiếu nại, override, gold job, export, trưởng nhóm) | Chưa có |
+| Lấy mẫu review | `review_rate` < 1 | Chỉ nhận 1.0 (review 100%) |

@@ -331,6 +331,6 @@ Vẫn dùng `/work` hoặc `/review` như thành viên bình thường.
 
 ## 8. Trạng thái cài đặt (frontend)
 
-Đã có (): đăng nhập, kích hoạt, Việc cần làm, tài khoản, Gán nhãn và Chấm (hàng đợi + màn làm việc), HR (người dùng, đội, quyền sắp hết hạn, audit), Project (danh sách, tạo, workspace với các tab Tổng quan, Thành viên và đội, Guideline kèm mã lỗi, Dữ liệu kèm wizard upload, Cấu hình job kèm xem trước, Task, Job, Escalation), chi tiết task kèm nghiệm thu.
+Đã có (`fe/src/app/`): đăng nhập, kích hoạt, Việc cần làm, tài khoản, Gán nhãn và Chấm (hàng đợi và màn làm việc), HR (người dùng, đội, quyền sắp hết hạn, audit), Project (danh sách, tạo, workspace với các tab Tổng quan, Thành viên và đội, Guideline kèm mã lỗi, Dữ liệu kèm wizard upload, Cấu hình job kèm xem trước, Task, Job, Escalation), chi tiết task kèm nghiệm thu.
 
-Chưa có: trang trưởng nhóm (), khiếu nại, export.  và lint sạch; chưa được kiểm thử bằng trình duyệt.
+Chưa có: trang trưởng nhóm (`/teams/[id]`), khiếu nại, export. `next build` và lint sạch; chưa được kiểm thử bằng trình duyệt.

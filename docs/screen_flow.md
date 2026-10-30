@@ -335,4 +335,4 @@ Vẫn dùng `/work` hoặc `/review` như thành viên bình thường.
 
 Đã thêm phần P1: trang trưởng nhóm (`/teams/[id]`), khiếu nại (annotator gửi ở hàng đợi, PM/PO xử lý ở tab Khiếu nại), đổi quyết định (owner, ở màn chấm), gold job và export (trang chi tiết task), tab Chất lượng và Nhật ký, chất lượng cá nhân ở trang tài khoản, trang Hệ thống.
 
-Chưa có: service account, calibration, break-glass, thông báo (đã chốt không có chuông). `next build` và lint sạch; đã chạy kịch bản trình duyệt Chrome thật (xem `docs/` mục kiểm thử trong báo cáo cuối).
+Chưa có: service account, calibration, break-glass, thông báo (đã chốt không có chuông). `next build` và lint sạch; đã chạy kịch bản trình duyệt Chrome thật (`scripts/e2e/e2e.js`) qua HR, PO, annotator, reviewer: 28/29 bước đạt, bước còn lại là lỗi hoa/thường của kịch bản (đã sửa).

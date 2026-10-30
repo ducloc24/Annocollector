@@ -141,7 +141,7 @@ erDiagram
     role_permissions {
         uuid role_id FK
         uuid permission_id FK
-        string limit "all | project | assigned | own"
+        string limit_scope "all | project | assigned | own | team | rbac"
     }
     user_platform_roles {
         uuid id PK
@@ -182,7 +182,7 @@ erDiagram
 | `user_action_tokens` | Token dùng một lần cho kích hoạt tài khoản và đặt lại mật khẩu (lưu hash) |
 | `roles` | Danh mục role. `scope` cho biết role dùng ở cấp platform hay project. Role hệ thống (`is_system`) không xoá được |
 | `permissions` | Danh mục permission, đặt tên `resource.action` |
-| `role_permissions` | Role nào có permission nào, kèm `limit` (phạm vi dữ liệu) |
+| `role_permissions` | Role nào có permission nào, kèm `limit_scope` (phạm vi dữ liệu; tên cột tránh từ khoá SQL `limit`). Giá trị `rbac` chỉ dùng cho `audit.read` của `hr_admin`: chỉ đọc sự kiện về user và role |
 | `user_platform_roles` | Gán role platform cho user (HR cấp) |
 | `project_members` | Gán role project cho user trong một project (PO cấp) |
 | `role_requirements` | Role project nào đòi role platform nào (thay bảng "platform role tối thiểu" viết cứng) |

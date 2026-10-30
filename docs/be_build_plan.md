@@ -94,7 +94,7 @@ role-permission, role requirement, role conflict (theo mục 3 của
 
 | Module | Nội dung |
 | --- | --- |
-| `services/auth` | JWT theo `api_design.md` mục 2: đăng nhập email + mật khẩu (băm argon2 hoặc bcrypt), access token 15 phút, refresh token lưu hash trong DB và xoay vòng, cookie httpOnly; đăng xuất; kích hoạt tài khoản bằng token một lần; kiểm tra `status` và `token_version` mỗi request |
+| `services/auth` | JWT theo `api_design.md` mục 2: đăng nhập email + mật khẩu (băm argon2 hoặc bcrypt), access token 15 phút, refresh token lưu hash trong DB và xoay vòng, cookie httpOnly; đăng xuất; kích hoạt tài khoản bằng token một lần (**`POST /users` trả link kích hoạt cho HR**, chưa gửi email); kiểm tra `status` và `token_version` mỗi request |
 | `services/authorization` | **Permission resolver**: nhận `user`, `permission`, `project_id` (tuỳ chọn), trả có/không và `limit`. Theo đúng thứ tự ở mục 3.6 của `database_design.md`. Đọc `expires_at`, `revoked_at` ngay lúc kiểm |
 | `api/deps.py` | `CurrentUser`, `require_permission("user.manage")`, `require_project_permission("job.review")` |
 | `services/user` | Tạo user, tìm kiếm, disable (offboarding: thu hồi role, tăng `token_version`, thu hồi refresh token, đánh dấu job trả về pool ở bước 5) |
@@ -102,7 +102,9 @@ role-permission, role requirement, role conflict (theo mục 3 của
 | `services/audit` | `record(actor, action, target, before, after, reason)`, gọi trong cùng transaction |
 | Script khởi tạo | Lệnh CLI tạo `hr_admin` đầu tiên (không có ai cấp quyền cho người đầu tiên) |
 
-**Endpoint:** xem `api_design.md` mục 3.1–3.5, 3.16.
+**Endpoint:** xem `api_design.md` mục 3.1–3.4, 3.16. **Hoãn:** `/system/settings` (AD-01, chưa có bảng thiết kế); `/me/projects`, `/me/teams` sang bước 2; `/me/jobs`, `/me/reviews` sang bước 5.
+
+**Trạng thái:** đã xong (nhánh `feat/be-foundation`). Danh mục role/permission ở `be/app/core/rbac_catalog.py`, seed trong migration `5c1e9a7d2b40`.
 
 **Test bắt buộc:** đăng nhập với user `suspended` bị từ chối; access token còn hạn bị từ chối
 ngay sau offboarding; dùng lại refresh token cũ thu hồi cả family; HR không tự cấp role; `platform_admin` không cấp được role; quyền hết hạn

@@ -56,6 +56,24 @@ class Settings(BaseSettings):
     # Create tables on startup (dev only, Alembic owns the schema otherwise)
     AUTO_CREATE_TABLES: bool = False
 
+    # Auth (JWT access token + refresh token stored in DB)
+    JWT_SECRET_KEY: str | None = None
+    ACCESS_TOKEN_MINUTES: int = 15
+    REFRESH_TOKEN_DAYS: int = 7
+    ACTIVATION_TOKEN_HOURS: int = 72
+    REFRESH_COOKIE_SECURE: bool = True
+    LOGIN_RATE_LIMIT: int = 10  # attempts per minute per ip + email
+    FRONTEND_URL: str = "http://localhost:3000"
+
+    @property
+    def jwt_secret_key(self) -> str:
+        if not self.JWT_SECRET_KEY or len(self.JWT_SECRET_KEY) < 32:
+            raise RuntimeError(
+                "JWT_SECRET_KEY is missing or shorter than 32 characters. "
+                "Set it in the repo-root .env (see .env.example)."
+            )
+        return self.JWT_SECRET_KEY
+
     @property
     def is_supabase(self) -> bool:
         return self.DATABASE_URL is None and self.SUPABASE_HOST is not None

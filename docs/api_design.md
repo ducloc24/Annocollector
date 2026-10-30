@@ -57,7 +57,7 @@
 | **Refresh token** | Chuỗi ngẫu nhiên, hạn **7 ngày**, lưu **hash** trong bảng `refresh_tokens`. Gửi bằng cookie `httpOnly`, `Secure`, `SameSite=Strict`, `Path=/api/v1/auth` |
 | Xoay vòng | Mỗi lần refresh cấp refresh token mới và thu hồi token cũ. Dùng lại token đã bị thay thế thì thu hồi cả **family** (dấu hiệu bị đánh cắp) |
 | **Kiểm tra mỗi request** | Giải mã access token, rồi đọc `users.status` và `users.token_version` (cùng truy vấn với kiểm tra quyền). `status ≠ active` hoặc `ver ≠ token_version` thì trả 401 `token_revoked` |
-| Thu hồi ngay | Offboarding, thu hồi role, đổi mật khẩu: tăng `token_version` và thu hồi mọi refresh token của user |
+| Thu hồi ngay | Offboarding và đổi mật khẩu: tăng `token_version` và thu hồi mọi refresh token của user. Thu hồi một role không cần đổi token: quyền được đọc lại từ DB ở mỗi request nên mất hiệu lực ngay |
 
 ### 2.2 Luồng
 
@@ -104,7 +104,7 @@ không cần đăng nhập. Path tính sau prefix `/api/v1`.
 | --- | --- | --- | --- | --- |
 | POST | `/auth/login` | public | ALL-01 | Đăng nhập bằng email + mật khẩu. Trả access token, đặt cookie refresh |
 | POST | `/auth/refresh` | public (cookie) | ALL-01 | Đổi refresh token lấy access token mới, xoay vòng refresh token |
-| POST | `/auth/logout` | — | ALL-01 | Thu hồi refresh token hiện tại, xoá cookie. 204 |
+| POST | `/auth/logout` | public (cookie) | ALL-01 | Thu hồi refresh token hiện tại, xoá cookie. 204. Không cần access token để đăng xuất được cả khi access token đã hết hạn |
 | POST | `/auth/activate` | public | HR-01 | Kích hoạt tài khoản bằng token một lần trong email, đặt mật khẩu |
 | POST | `/auth/change-password` | — | ALL-03 | Đổi mật khẩu; tăng `token_version`, thu hồi các phiên khác, trả token mới |
 
@@ -128,7 +128,8 @@ Login sai mật khẩu và tài khoản không tồn tại trả **cùng một l
 
 | Method | Path | Quyền | Story | Mô tả |
 | --- | --- | --- | --- | --- |
-| POST | `/users` | `user.manage (all)` | HR-01 | Tạo user (họ tên, email, mã nhân viên, loại hợp đồng). Gửi email kích hoạt. Không chọn project |
+| POST | `/users` | `user.manage (all)` | HR-01 | Tạo user (họ tên, email, mã nhân viên, loại hợp đồng). **Trả `activation_url`** (dùng một lần, hạn 72 giờ) để HR gửi cho người dùng; chưa có gửi email. Không chọn project |
+| POST | `/users/{user_id}/activation-link` | `user.manage (all)` | HR-01 | Cấp link kích hoạt mới khi link cũ hết hạn; link cũ mất hiệu lực. Người đã kích hoạt thì 409 `already_activated` |
 | GET | `/users` | `user.manage (all)` | HR-07 | Tìm theo `q` (tên, email, mã), lọc `status`, `employment_type`, `role` |
 | GET | `/users/{user_id}` | `user.manage (all)` | HR-07 | Chi tiết user và role platform. Không có thông tin project chi tiết |
 | POST | `/users/{user_id}/disable` | `user.manage (all)` | HR-04 | Offboarding: disable, thu hồi mọi role, vô hiệu membership, tăng `token_version`, thu hồi refresh token, trả job dở về pool. Bắt buộc `reason` |

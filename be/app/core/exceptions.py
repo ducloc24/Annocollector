@@ -21,13 +21,25 @@ class AppError(Exception):
         *,
         code: str | None = None,
         status_code: int | None = None,
+        details: Any = None,
     ) -> None:
         super().__init__(message)
         self.message = message
+        self.details = details
         if code is not None:
             self.code = code
         if status_code is not None:
             self.status_code = status_code
+
+
+class UnauthorizedError(AppError):
+    status_code = status.HTTP_401_UNAUTHORIZED
+    code = "unauthorized"
+
+
+class ForbiddenError(AppError):
+    status_code = status.HTTP_403_FORBIDDEN
+    code = "forbidden"
 
 
 class NotFoundError(AppError):
@@ -38,6 +50,12 @@ class NotFoundError(AppError):
 class ConflictError(AppError):
     status_code = status.HTTP_409_CONFLICT
     code = "conflict"
+
+
+class InvalidStateError(ConflictError):
+    """A state transition that the state machine does not allow."""
+
+    code = "invalid_state"
 
 
 def _error_payload(code: str, message: str, details: Any = None) -> dict[str, Any]:
@@ -52,7 +70,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content=_error_payload(exc.code, exc.message),
+            content=_error_payload(exc.code, exc.message, jsonable_encoder(exc.details)),
         )
 
     @app.exception_handler(RequestValidationError)

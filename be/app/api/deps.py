@@ -1,17 +1,27 @@
+from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.repositories.item import ItemRepository
-from app.services.item import ItemService
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
-
-def get_item_service(session: DbSession) -> ItemService:
-    return ItemService(ItemRepository(session))
+MAX_PAGE_SIZE = 100
 
 
-ItemServiceDep = Annotated[ItemService, Depends(get_item_service)]
+@dataclass(frozen=True)
+class PageParams:
+    offset: int
+    limit: int
+
+
+def get_page_params(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=MAX_PAGE_SIZE),
+) -> PageParams:
+    return PageParams(offset=offset, limit=limit)
+
+
+PageParamsDep = Annotated[PageParams, Depends(get_page_params)]

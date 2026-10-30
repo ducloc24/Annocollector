@@ -1,4 +1,4 @@
-import { ItemsExplorer } from "@/components/items-explorer";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -8,15 +8,18 @@ export default function Home() {
           Annocollector
         </span>
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          Next.js + FastAPI starter
+          Annotation platform
         </h1>
         <p className="max-w-xl text-sm leading-6 text-zinc-600 dark:text-zinc-400">
-          Frontend in <code className="font-mono">/fe</code>, API in{" "}
-          <code className="font-mono">/be</code>. This page talks to the FastAPI
-          CRUD endpoints through the typed client in{" "}
-          <code className="font-mono">src/lib/api.ts</code>.
+          Nền tảng gán nhãn nội bộ. Thiết kế nằm trong <code className="font-mono">docs/</code>.
         </p>
         <div className="flex flex-wrap gap-3 text-sm">
+          <Link
+            className="font-medium text-zinc-900 underline underline-offset-4 dark:text-zinc-100"
+            href="/demo/annotate"
+          >
+            Demo màn hình gán nhãn
+          </Link>
           <a
             className="font-medium text-zinc-900 underline underline-offset-4 dark:text-zinc-100"
             href="http://localhost:8000/docs"
@@ -25,18 +28,8 @@ export default function Home() {
           >
             API docs
           </a>
-          <a
-            className="font-medium text-zinc-900 underline underline-offset-4 dark:text-zinc-100"
-            href="http://localhost:8000/api/v1/items"
-            target="_blank"
-            rel="noreferrer"
-          >
-            /api/v1/items
-          </a>
         </div>
       </header>
-
-      <ItemsExplorer />
     </main>
   );
 }

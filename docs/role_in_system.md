@@ -6,6 +6,11 @@
 >
 > Nguồn gốc yêu cầu: `docs/prd.md`.
 > Trạng thái: draft để chốt trước khi thiết kế schema.
+>
+> **Cập nhật:** annotator và reviewer không được PO thêm lẻ vào project nữa. HR lập
+> **đội đánh giá** (gồm annotator và reviewer), PO chọn đội cho project và giao task
+> cho đội, thành viên tự lấy việc. Chi tiết ở `docs/database_design.md` mục 9. Các
+> chỗ bên dưới nói "PO add annotator/reviewer" cần hiểu theo mô hình đội.
 
 ---
 

@@ -12,7 +12,7 @@
 
 | # | Nguyên tắc | Hệ quả |
 | --- | --- | --- |
-| 1 | **Cột thường cho thứ điều khiển, jsonb cho nội dung** | `status`, `assignee_id`, `project_id`, thời gian là cột thật (có index, khoá ngoại, CHECK). Nội dung item, nhãn, schema là jsonb |
+| 1 | **Cột thường cho thứ điều khiển, jsonb cho nội dung** | `status`, `assignee_id`, `project_id`, thời gian là cột thật (có index, khoá ngoại). Nội dung item, nhãn, schema là jsonb |
 | 2 | **Bất biến theo version** | `dataset_versions`, `guideline_versions`, `job_configs` chỉ thêm, không sửa. Job ghim đúng version lúc giao |
 | 3 | **Không xoá cứng** | Dùng `revoked_at`, `left_at`, trạng thái. Audit không cascade delete |
 | 4 | **Quyết định là bản ghi mới** | Muốn đổi quyết định review thì thêm bản ghi, không sửa bản cũ |
@@ -30,6 +30,8 @@ flowchart LR
     B --> C[3. Cấu hình<br/>và công việc]
     C --> D[4. Gán nhãn<br/>và review]
     D --> E[5. Chất lượng]
+    G[7. Đội đánh giá<br/>và phân việc] --> C
+    A --> G
     A -.-> F[6. Audit]
     B -.-> F
     C -.-> F
@@ -38,12 +40,13 @@ flowchart LR
 
 | Nhóm | Bảng |
 | --- | --- |
-| 1. Danh tính và phân quyền (RBAC) | `users`, `roles`, `permissions`, `role_permissions`, `user_platform_roles`, `role_requirements`, `role_conflicts`, `user_sessions` |
+| 1. Danh tính và phân quyền (RBAC) | `users`, `roles`, `permissions`, `role_permissions`, `user_platform_roles`, `role_requirements`, `role_conflicts`, `refresh_tokens`, `user_action_tokens` |
 | 2. Project và dữ liệu | `projects`, `project_members`, `guideline_versions`, `dataset_versions`, `items` |
 | 3. Cấu hình và công việc | `job_configs`, `tasks`, `jobs`, `job_items` |
 | 4. Gán nhãn và review | `submissions`, `annotations`, `reviews`, `review_errors`, `corrections`, `appeals` |
 | 5. Chất lượng | `reason_codes`, `gold_answers` |
 | 6. Audit | `audit_events` |
+| 7. Đội đánh giá và phân việc | `teams`, `team_members`, `project_teams` (và `tasks.team_id`) |
 
 Tiến độ (% hoàn thành, throughput, backlog, cycle time, stuck) **không có bảng
 riêng**; tính từ `jobs` bằng view hoặc truy vấn.
@@ -73,7 +76,8 @@ Hai lớp quyền tách biệt: HR cấp **role platform** (năng lực), PO c�
 ```mermaid
 erDiagram
     users ||--o{ user_platform_roles : "được cấp"
-    users ||--o{ user_sessions : "đăng nhập"
+    users ||--o{ refresh_tokens : "đăng nhập"
+    users ||--o{ user_action_tokens : "kích hoạt, đặt lại mật khẩu"
     roles ||--o{ user_platform_roles : "là"
     users ||--o{ project_members : "tham gia"
     roles ||--o{ project_members : "là"
@@ -94,18 +98,33 @@ erDiagram
         string employment_type "full_time | contractor | intern"
         timestamp joined_at
         timestamp left_at
+        string password_hash
+        int token_version "tăng lên thì mọi access token cũ mất hiệu lực"
     }
-    user_sessions {
+    user_action_tokens {
         uuid id PK
         uuid user_id FK
+        string purpose "activate | reset_password"
+        string token_hash
+        timestamp expires_at
+        timestamp used_at
+    }
+    refresh_tokens {
+        uuid id PK
+        uuid user_id FK
+        uuid family_id "chuỗi xoay vòng"
+        string token_hash
+        uuid replaced_by FK
+        string ip
+        string user_agent
         timestamp created_at
         timestamp expires_at
-        timestamp revoked_at "huỷ ngay khi offboarding"
+        timestamp revoked_at "thu hồi khi logout, offboarding, dùng lại token cũ"
     }
     roles {
         uuid id PK
         string code "annotator, reviewer, po..."
-        string scope "platform | project"
+        string scope "platform | project | team"
         string name
         string description
         boolean is_system "role hệ thống, không xoá"
@@ -159,7 +178,8 @@ erDiagram
 | Bảng | Làm gì |
 | --- | --- |
 | `users` | Tài khoản. `kind = service` cho bot/cron, do `platform_admin` tạo, không dùng chung tài khoản người |
-| `user_sessions` | Phiên đăng nhập, để huỷ ngay khi offboarding. Cần nếu dùng session phía server; nếu dùng token thì cần cơ chế thu hồi khác (chưa chốt) |
+| `refresh_tokens` | Refresh token của JWT (lưu hash), xoay vòng mỗi lần refresh; dùng lại token đã bị thay thế thì thu hồi cả family. Access token không lưu DB; mỗi request so `users.token_version` để thu hồi ngay (xem `api_design.md` mục 2) |
+| `user_action_tokens` | Token dùng một lần cho kích hoạt tài khoản và đặt lại mật khẩu (lưu hash) |
 | `roles` | Danh mục role. `scope` cho biết role dùng ở cấp platform hay project. Role hệ thống (`is_system`) không xoá được |
 | `permissions` | Danh mục permission, đặt tên `resource.action` |
 | `role_permissions` | Role nào có permission nào, kèm `limit` (phạm vi dữ liệu) |
@@ -173,7 +193,7 @@ Ràng buộc dữ liệu:
 - `unique(user_id, role_id)` trên `user_platform_roles` khi `revoked_at is null`.
 - `unique(project_id, user_id, role_id)` trên `project_members` khi `revoked_at is null`.
 - `user_platform_roles.role_id` phải có `roles.scope = platform`; `project_members.role_id`
-  phải có `roles.scope = project`. Kiểm tra ở service hoặc trigger.
+  phải có `roles.scope = project`. Kiểm tra ở backend.
 - `role_permissions.permission_id` phải cùng `level` với `roles.scope` của role.
 
 ### 3.3 Danh mục role
@@ -196,8 +216,8 @@ Ràng buộc dữ liệu:
 | --- | --- |
 | `owner` | Toàn quyền trong project. Phải có owner dự phòng |
 | `manager` | Chia job, theo dõi tiến độ, mở tranh chấp |
-| `annotator` | Làm job được giao |
-| `reviewer` | Chấm job trong project |
+| `annotator` | Làm job được giao. **Chỉ có qua đội** (mục 9) |
+| `reviewer` | Chấm job trong project. **Chỉ có qua đội** (mục 9) |
 | `viewer` | Chỉ đọc tiến độ và báo cáo |
 
 **Role project cần role platform nào (`role_requirements`)**
@@ -217,7 +237,7 @@ cả khi PO chưa gỡ. Kiểm tra lúc đọc quyền, không chờ job dọn d
 
 | Cặp | Phạm vi | Hiệu ứng |
 | --- | --- | --- |
-| project `annotator` và project `reviewer` | cùng project, cùng user | **block** |
+| project `annotator` và project `reviewer` | cùng project, cùng user (kể cả khi đến từ hai đội khác nhau, xem 9.3) | **block** |
 | platform `hr_admin` và platform `platform_admin` | cùng user | **warn** (công ty nhỏ có thể giữ cả hai, nhưng ghi nhận là hai role riêng để audit) |
 
 ### 3.4 Danh mục permission
@@ -235,8 +255,8 @@ cả khi PO chưa gỡ. Kiểm tra lúc đọc quyền, không chờ job dọn d
 | `dataset.delete` | project | Xoá dataset |
 | `dataset.read` | project | Xem nội dung dataset và item |
 | `job_config.manage` | project | Tạo version job config |
-| `member.manage` | project | Thêm, gỡ thành viên project |
-| `task.manage` | project | Tạo, cắt, giao task |
+| `member.manage` | project | Thêm, gỡ thành viên trực tiếp (owner, manager, viewer); gắn, gỡ đội khỏi project |
+| `task.manage` | project | Tạo, cắt task; giao task cho đội |
 | `job.assign` | project | Chia job, đổi người làm |
 | `job.annotate` | project | Làm và submit job |
 | `job.review` | project | Chấm job: accept, reject, escalate |
@@ -250,6 +270,9 @@ cả khi PO chưa gỡ. Kiểm tra lúc đọc quyền, không chờ job dọn d
 | `system.configure` | platform | Cấu hình hệ thống, quản lý service account |
 | `dataset.breakglass` | platform | Truy cập dataset khẩn cấp (có lý do, có audit) |
 | `export.data` | project | Export dữ liệu và báo cáo |
+| `team.manage` | platform | Tạo đội, thêm, gỡ thành viên, đặt vai trò trong đội |
+| `team.read` | platform | Xem danh sách đội và số thành viên theo vai trò (để chọn đội) |
+| `team.monitor` | team | Xem tải, tiến độ, chất lượng (số liệu tổng hợp) của thành viên đội mình trên mọi project đội làm; nhận cảnh báo của đội |
 
 ### 3.5 Ma trận role - permission
 
@@ -266,6 +289,17 @@ Ký hiệu trong ô là `limit`: `all` (toàn hệ thống), `P` (project mình 
 | `system.configure` | - | - | - | - | - | all | - |
 | `dataset.breakglass` | - | - | - | - | - | all (có điều kiện) | - |
 | `audit.read` | all (về quyền) | - | - | - | - | all (hệ thống) | all |
+| `team.manage` | all | - | - | - | - | - | - |
+| `team.read` | all | all | - | - | all | - | all |
+
+**Role đội**
+
+| Permission | team_lead |
+| --- | --- |
+| `team.monitor` | T (đội mình) |
+
+`team_lead` là role có `scope = team`, không gán qua `user_platform_roles` mà qua cờ
+`team_members.is_lead` (mục 9.5). Ký hiệu `limit` thêm `T` = đội mình.
 
 **Role project**
 
@@ -301,14 +335,14 @@ Ghi chú:
 
 ```mermaid
 flowchart TD
-    REQ[Request: user U làm hành động<br/>cần permission X<br/>trên project P] --> ACT{User active<br/>và session còn?}
+    REQ[Request: user U làm hành động<br/>cần permission X<br/>trên project P] --> ACT{User active và<br/>token_version khớp?}
     ACT -- không --> DENY[Từ chối]
     ACT -- có --> LV{X là permission<br/>cấp platform?}
     LV -- có --> PL[Tìm role platform còn hiệu lực<br/>của U có permission X]
     PL --> PLOK{Có?}
     PLOK -- không --> DENY
     PLOK -- có --> CTX
-    LV -- không --> MEM[Tìm project_members của U<br/>trong P, chưa hết hạn,<br/>chưa thu hồi]
+    LV -- không --> MEM[Tìm vai trò của U trong P:<br/>project_members trực tiếp<br/>+ đội đang gắn vào P,<br/>chưa hết hạn, chưa thu hồi]
     MEM --> REQD{Role platform tương ứng<br/>còn hiệu lực?<br/>role_requirements}
     REQD -- không --> DENY
     REQD -- có --> PERM{Role project có<br/>permission X?}
@@ -344,22 +378,22 @@ liệu cụ thể, nên kiểm tra thêm ở service, không nhét vào bảng p
 ```mermaid
 flowchart LR
     A[HR tạo user] --> B[HR cấp role platform<br/>kèm expires_at nếu là nhà thầu]
-    B --> C[PO thêm vào project<br/>với role project]
+    B --> C[HR thêm vào đội<br/>PO gắn đội vào project]
     C --> D{Kiểm tra<br/>role_requirements<br/>và role_conflicts}
     D -- ok --> E[Có quyền làm việc]
     D -- vi phạm --> X[Từ chối]
     E --> F{Hết hạn hoặc<br/>bị thu hồi?}
-    F -- có --> G[Mất quyền ngay<br/>huỷ session<br/>trả job dở về pool]
+    F -- có --> G[Mất quyền ngay<br/>thu hồi token<br/>trả job dở về pool]
 ```
 
-- **Onboarding:** HR cấp role platform, **không** chọn project. PO thêm vào project từ
-  danh sách người đã được HR duyệt.
+- **Onboarding:** HR cấp role platform và thêm người vào đội, **không** chọn project. PO
+  chọn đội cho project. Owner, manager, viewer vẫn được PO thêm trực tiếp.
 - **Offboarding:** HR disable user thì thu hồi toàn bộ role platform, vô hiệu mọi
-  `project_members`, huỷ session, trả job đang làm dở về pool, ghi audit.
+  `project_members` và `team_members`, tăng `token_version`, thu hồi refresh token, trả job đang làm dở về pool, ghi audit.
 - **Hết hạn tự động:** kiểm tra `expires_at` ngay lúc kiểm quyền, không phụ thuộc job
   dọn dẹp chạy định kỳ.
 - **Chuyển vai trò giữa project:** PO không tự "thăng chức". Cần HR cấp thêm role
-  platform tương ứng rồi PO mới thêm vào project mới (chưa chốt chính sách, xem mục 12).
+  platform tương ứng và đưa người đó vào một đội với vai trò mới (chưa chốt chính sách, xem mục 13).
 
 ### 3.9 Audit cho phân quyền
 
@@ -440,6 +474,8 @@ erDiagram
 
 Ghi chú:
 
+- `project_members` chỉ dùng cho `owner`, `manager`, `viewer`. Annotator và reviewer vào
+  project qua đội (mục 9).
 - `project_members`: điều kiện add theo `role_requirements`, chặn cặp xung đột theo
   `role_conflicts` (nhóm 1). Thu hồi role platform thì membership tương ứng vô hiệu.
 - `guideline_versions`, `dataset_versions`, `items`: **append-only**.
@@ -467,6 +503,7 @@ erDiagram
     jobs ||--o{ job_items : "gồm"
     items ||--o{ job_items : "nằm trong"
     users ||--o{ jobs : "assignee_id / reviewer_id"
+    teams ||--o{ tasks : "được giao"
 
     job_configs {
         uuid id PK
@@ -475,7 +512,7 @@ erDiagram
         string item_type
         jsonb item_schema "cấu trúc item"
         jsonb label_schema "các trường nhãn"
-        jsonb job_rules "số item/job, số annotator, tỷ lệ review, SLA"
+        jsonb job_rules "số item/job, số annotator, tỷ lệ review, SLA, phân việc (mục 9.4)"
         jsonb self_check "câu hỏi tự soát của project"
         uuid created_by FK
         timestamp created_at
@@ -484,6 +521,8 @@ erDiagram
         uuid id PK
         uuid project_id FK
         uuid dataset_version_id FK
+        uuid team_id FK "đội được giao, null khi chưa giao"
+        int priority "cao hơn làm trước"
         string name
         string status "draft | active | in_acceptance | delivered"
         uuid signed_off_by FK
@@ -496,10 +535,12 @@ erDiagram
         uuid task_id FK
         uuid guideline_version_id FK
         uuid job_config_id FK
-        string status "assigned | in_progress | submitted | in_review | accepted | accepted_with_fix | rejected | escalated"
+        string status "unassigned | assigned | in_progress | submitted | in_review | accepted | accepted_with_fix | rejected | escalated"
         uuid assignee_id FK
         uuid reviewer_id FK
         timestamp lease_expires_at
+        jsonb draft "bản nháp của người đang làm"
+        timestamp draft_updated_at
         int rework_count
         boolean is_gold
         timestamp assigned_at
@@ -516,14 +557,16 @@ erDiagram
 
 Ghi chú:
 
-- `jobs.status` đúng với sơ đồ trạng thái trong `review_workflow.md`. Job chưa có
-  người nhận ở trong pool: `assignee_id` null (có thể cần thêm trạng thái
-  `unassigned`; chưa chốt).
+- `jobs.status` theo sơ đồ trạng thái trong `review_workflow.md`, thêm `unassigned`
+  cho job trong pool chưa có người nhận. Chuyển hợp lệ và endpoint tương ứng ở
+  `api_design.md` mục 5.
+- `jobs.draft`: bản nháp của người đang làm, ghi đè mỗi lần lưu. Không phải
+  submission. Khi đổi người làm, bản nháp cũ được ghi vào audit rồi xoá khỏi job.
 - `jobs` ghim `guideline_version_id` và `job_config_id` tại lúc giao. Hai cột này
   `NOT NULL` và không đổi sau khi giao.
 - `job_items`: một item chỉ nằm trong một job của một task. Nếu bật consensus thì
   một item nằm trong nhiều job (cho phép khi `job_rules` bật consensus; chưa chốt).
-- `jobs.reviewer_id` khác `jobs.assignee_id` (CHECK).
+- `jobs.reviewer_id` khác `jobs.assignee_id` (kiểm tra ở backend).
 - `jobs.rework_count` giới hạn theo `job_rules` (mặc định 2); vượt thì `escalated`.
 - Task có `status = delivered` khi PO ký nghiệm thu. Tiến độ tính trên job
   `accepted` của dataset version.
@@ -565,6 +608,7 @@ erDiagram
         uuid id PK
         uuid submission_id FK
         uuid item_id FK
+        string target "phần được gán nhãn trong item, vd id bước tool call; null nếu nhãn cho cả item"
         jsonb value "do label_schema quy định"
         boolean is_unsure
         timestamp created_at
@@ -585,6 +629,7 @@ erDiagram
         uuid id PK
         uuid review_id FK
         uuid item_id FK
+        string target "giống annotations.target"
         string reason_code
         string severity "critical | major | minor"
         text note
@@ -619,8 +664,7 @@ Ghi chú:
   mới (`kind` khác, `supersedes_review_id` trỏ về bản cũ). Override bắt buộc có
   `reason`.
 - Reviewer không review job của chính mình: `reviews.reviewer_id` khác
-  `submissions.annotator_id` (kiểm tra ở service, kèm CHECK hoặc trigger nếu khả
-  thi).
+  `submissions.annotator_id` (kiểm tra ở backend).
 - `annotations.value` là jsonb, ví dụ với tool call:
   `{"verdict": "incorrect", "reason_codes": ["UNNECESSARY_CALL"], "note": "..."}`.
   Backend validate theo `label_schema` của job.
@@ -696,8 +740,8 @@ erDiagram
 
 Ghi chú:
 
-- **Append-only**: không UPDATE, không DELETE (quyền DB ở cấp ứng dụng chỉ cho
-  INSERT và SELECT).
+- **Append-only**: không UPDATE, không DELETE (backend chỉ có đường ghi
+  thêm và đọc).
 - Không dùng khoá ngoại có cascade. Khi user bị xoá hoặc disable, lịch sử vẫn
   hiển thị được tên (nhờ `actor_name`).
 - Ghi: cấp/thu hồi role, đổi membership, upload hoặc đổi dataset, đổi guideline
@@ -706,7 +750,173 @@ Ghi chú:
 
 ---
 
-## 9. Quan hệ toàn cục (rút gọn)
+## 9. Nhóm 7: Đội đánh giá và phân việc
+
+Người gán nhãn và người review không được thêm lẻ từng người vào project. Họ thuộc
+một **đội đánh giá** (team) do HR lập. PO chọn đội nào làm project của mình và giao
+từng task cho một đội. Thành viên trong đội **tự lấy việc** (pull) từ các task được
+giao cho đội.
+
+### 9.1 Ai làm gì
+
+| Việc | Ai | Ghi chú |
+| --- | --- | --- |
+| Tạo đội, thêm và gỡ thành viên, đặt vai trò trong đội (`annotator` hoặc `reviewer`) | HR | HR không cần biết đội làm project nào, không xem dữ liệu |
+| Gắn đội vào project, gỡ đội khỏi project | PO (owner) | Chọn trong danh sách đội có sẵn |
+| Giao task cho một đội của project | PO (owner), PM (manager) | Mỗi task một đội |
+| Lấy việc tiếp theo trong task của đội | Annotator, reviewer trong đội | Hệ thống chọn job, người làm không tự chọn |
+| Chỉ định trưởng nhóm | HR | Một thành viên của đội, tối đa một trưởng nhóm đang hiệu lực |
+| Theo dõi tải, tiến độ, chất lượng của đội; coaching; đề xuất HR thêm hoặc gỡ người | Trưởng nhóm | Chỉ xem số liệu tổng hợp, vẫn làm việc như thành viên thường (mục 9.5) |
+| Giao tay, đổi người, thu hồi job | PM, PO | Xử lý ngoại lệ |
+
+`owner`, `manager`, `viewer` vẫn thêm trực tiếp qua `project_members`. Vai trò
+`annotator` và `reviewer` trong project **chỉ có được qua đội**.
+
+### 9.2 Mô hình dữ liệu
+
+```mermaid
+erDiagram
+    teams ||--o{ team_members : "gồm"
+    users ||--o{ team_members : "thuộc"
+    teams ||--o{ project_teams : "làm"
+    projects ||--o{ project_teams : "có đội"
+    teams ||--o{ tasks : "được giao (team_id)"
+
+    teams {
+        uuid id PK
+        string code
+        string name
+        string description
+        string status "active | archived"
+        uuid created_by FK
+        timestamp created_at
+    }
+    team_members {
+        uuid id PK
+        uuid team_id FK
+        uuid user_id FK
+        string team_role "annotator | reviewer"
+        boolean is_lead "trưởng nhóm"
+        uuid added_by FK
+        timestamp added_at
+        timestamp expires_at
+        timestamp removed_at
+    }
+    project_teams {
+        uuid id PK
+        uuid project_id FK
+        uuid team_id FK
+        uuid assigned_by FK
+        timestamp assigned_at
+        timestamp removed_at
+    }
+```
+
+Bảng `tasks` (nhóm 3) có thêm `team_id` (đội được giao) và `priority` (task nào làm
+trước).
+
+Ghi chú:
+
+- Một người chỉ có **một vai trò trong một đội**: `unique(team_id, user_id)` khi
+  `removed_at is null`.
+- `team_role` phải được role platform tương ứng "đỡ" (`annotator` cần role platform
+  `annotator`, `reviewer` cần `reviewer`), giống `role_requirements`.
+- Một người có thể ở nhiều đội. Một đội có thể làm nhiều project.
+- Mỗi đội tối đa một trưởng nhóm đang hiệu lực: unique một phần trên
+  `team_members(team_id)` khi `is_lead and removed_at is null`.
+- **Vai trò hiệu lực trong project** của một người = vai trò trực tiếp trong
+  `project_members` (owner, manager, viewer) + vai trò trong các đội đang gắn với
+  project (annotator, reviewer). Permission resolver đọc cả hai nguồn.
+- Gỡ người khỏi đội, gỡ đội khỏi project, hoặc thu hồi role platform thì quyền mất
+  ngay; job dở của người đó trong các task liên quan trở về pool.
+
+### 9.3 Xung đột vai trò khi dùng đội
+
+Quy tắc cũ vẫn giữ: một người không vừa là annotator vừa là reviewer **trong cùng
+project**. Với đội, xung đột có thể sinh ra theo ba cách, backend chặn ở cả ba:
+
+| Hành động | Xung đột khi | Thông báo |
+| --- | --- | --- |
+| PO gắn đội B vào project P | Có người là annotator ở đội A và reviewer ở đội B, cả A và B cùng gắn vào P | Liệt kê người bị xung đột cho PO |
+| HR thêm người vào đội hoặc đổi vai trò trong đội | Đội đó đang gắn vào project có người này với vai trò ngược lại qua đội khác | Báo HR "xung đột vai trò ở project đang dùng đội", **không** nêu tên project |
+| Trong cùng một đội | Không xảy ra, vì mỗi người một vai trò trong đội | |
+
+Ngoài ra vẫn giữ: không ai review job do chính mình làm.
+
+### 9.4 Phân việc (pull)
+
+```mermaid
+flowchart TD
+    A[Thành viên bấm<br/>Lấy việc tiếp theo] --> B{Đang giữ<br/>quá WIP limit?}
+    B -- có --> X[Từ chối: wip_limit_reached]
+    B -- không --> C[Chọn job theo thứ tự ưu tiên<br/>trong các task active<br/>được giao cho đội của mình]
+    C --> D{Có job?}
+    D -- không --> Y[Hết việc: no_job_available]
+    D -- có --> E[Khoá job bằng<br/>SELECT ... FOR UPDATE SKIP LOCKED]
+    E --> F[Giao cho người gọi,<br/>đổi trạng thái, đặt lease,<br/>ghi audit]
+```
+
+**Annotator** lấy việc: job chuyển thẳng `unassigned` → `in_progress`. Thứ tự ưu tiên:
+
+1. Job bị reject của chính người đó (rework luôn quay về đúng người làm).
+2. Job PM đã giao tay cho người đó (`assigned`).
+3. Job `unassigned` trong task có `priority` cao hơn, rồi job cũ hơn.
+4. Gold job được trộn vào ngẫu nhiên theo `gold_rate`.
+
+**Reviewer** lấy việc: job chuyển `submitted` → `in_review`, `reviewer_id` là người gọi.
+Thứ tự ưu tiên:
+
+1. Job rework mà chính reviewer này đã chấm vòng trước (giữ ngữ cảnh).
+2. Job có item `unsure`.
+3. Job nộp sớm hơn.
+
+Luôn loại job do chính reviewer làm.
+
+**Cấu hình** nằm trong `job_rules` của job config:
+
+| Trường | Ý nghĩa | Mặc định gợi ý |
+| --- | --- | --- |
+| `assignment_mode` | `pull` hoặc `push_only` (chỉ PM giao) | `pull` |
+| `wip_limit_annotator` | Số job tối đa một annotator giữ cùng lúc | 3 |
+| `wip_limit_reviewer` | Số job tối đa một reviewer đang chấm cùng lúc | 20 |
+| `gold_rate` | Tỷ lệ gold job trộn vào | 0.05 |
+| `lease_minutes` | Thời gian giữ job | 120 |
+
+Lấy việc trong một transaction với `SKIP LOCKED` để nhiều người bấm cùng lúc không lấy
+trùng job. Chạy được trên Supabase transaction pooler vì cả chọn và giao nằm trong một
+transaction.
+
+### 9.5 Trưởng nhóm
+
+Trưởng nhóm là một thành viên bình thường của đội (vẫn có `team_role` là `annotator`
+hoặc `reviewer` và vẫn lấy việc, làm, nộp hoặc chấm như mọi người), được HR bật cờ
+`is_lead`. Không cần role platform riêng.
+
+| Được làm thêm | Không được |
+| --- | --- |
+| Xem tải và tiến độ của từng thành viên trên mọi project đội đang làm (số liệu) | Xem nội dung item hay nhãn của job không được giao cho mình |
+| Xem chất lượng của thành viên (tỷ lệ pass, lỗi lặp lại) để coaching | Xem đáp án gold job (trưởng nhóm vẫn bị đo bằng gold) |
+| Nhận cảnh báo của đội: thiếu vai trò, job kẹt, thành viên quá tải | Ảnh hưởng đến quyết định review job của chính mình |
+| Đề xuất HR thêm hoặc gỡ người (ngoài hệ thống hoặc qua ghi chú) | Tự sửa danh sách đội (vẫn là việc của HR) |
+| | Giao tay job trong đội (bản đầu chưa có; xem mục 13) |
+
+Trưởng nhóm chỉ thấy tên các project đội mình đang làm, vì bản thân họ cũng có quyền
+trong các project đó qua đội.
+
+### 9.6 Điều kiện tối thiểu của đội
+
+Không giới hạn và không cố định số người trong đội. Backend chỉ kiểm tra:
+
+| Khi | Điều kiện | Nếu vi phạm |
+| --- | --- | --- |
+| PO gắn đội vào project, PO kích hoạt task | Đội có ít nhất 1 annotator và 1 reviewer đang hiệu lực | Chặn, `team_missing_role` |
+| Bật consensus (sau này) | Số annotator ≥ `annotators_per_job` | Chặn |
+| HR gỡ người làm đội đang làm task mất hết một vai trò | | **Không chặn HR**; cảnh báo PM, PO của project và trưởng nhóm |
+| Tỷ lệ reviewer so với annotator thấp so với `review_rate` | | Cảnh báo mềm trên màn hình gắn đội và dashboard tiến độ |
+
+---
+
+## 10. Quan hệ toàn cục (rút gọn)
 
 Chỉ khoá ngoại, không có thuộc tính, để nhìn cấu trúc tổng thể.
 
@@ -736,34 +946,47 @@ erDiagram
     reviews ||--o{ review_errors : ""
     jobs ||--o{ appeals : ""
     jobs ||--o{ gold_answers : ""
+    teams ||--o{ team_members : ""
+    users ||--o{ team_members : ""
+    teams ||--o{ project_teams : ""
+    projects ||--o{ project_teams : ""
+    teams ||--o{ tasks : ""
 ```
 
 ---
 
-## 10. Ràng buộc quan trọng (ở DB, không chỉ ở service)
+## 11. Ràng buộc quan trọng
+
+Quy tắc nghiệp vụ **kiểm tra ở backend**, không dùng trigger hay CHECK nghiệp vụ ở DB.
+DB chỉ giữ khoá ngoại, `NOT NULL` và unique cơ bản.
 
 | # | Ràng buộc | Cách thực hiện |
 | --- | --- | --- |
-| 1 | User phải có role platform còn hiệu lực mới được là project member tương ứng | `role_requirements`, kiểm tra trong transaction và lúc kiểm quyền |
-| 2 | Cặp role xung đột không đi chung (annotator và reviewer cùng project) | `role_conflicts`, kiểm tra khi add member |
-| 3 | `jobs.reviewer_id` khác `jobs.assignee_id` | CHECK |
-| 4 | Reviewer khác annotator của submission được chấm | Service, kèm trigger nếu khả thi |
-| 5 | `dataset_versions`, `guideline_versions`, `job_configs`, `items`, `reviews`, `review_errors`, `audit_events` chỉ thêm | Quyền DB và/hoặc trigger chặn UPDATE/DELETE |
-| 6 | Job ghim `guideline_version_id` và `job_config_id` `NOT NULL`, không đổi sau khi giao | NOT NULL, trigger chặn đổi |
+| 1 | User phải có role platform còn hiệu lực mới được là project member tương ứng | Backend: `role_requirements`, kiểm tra khi thêm và lúc kiểm quyền |
+| 2 | Cặp role xung đột không đi chung (annotator và reviewer cùng project) | Backend: `role_conflicts`, kiểm tra khi thêm member |
+| 3 | `jobs.reviewer_id` khác `jobs.assignee_id` | Backend, khi phân reviewer |
+| 4 | Reviewer khác annotator của submission được chấm | Backend, khi review |
+| 5 | `dataset_versions`, `guideline_versions`, `job_configs`, `items`, `reviews`, `review_errors`, `audit_events` chỉ thêm | Backend không có đường sửa/xoá; repository chỉ có hàm tạo và đọc |
+| 6 | Job ghim `guideline_version_id` và `job_config_id`, không đổi sau khi giao | DB: `NOT NULL`. Backend: không có đường đổi |
 | 7 | Một version của một project là duy nhất | `unique(project_id, version)` |
 | 8 | Một role platform đang hiệu lực là duy nhất cho mỗi user; tương tự với `project_members` | Unique một phần (`revoked_at is null`) |
 | 9 | Một item thuộc đúng một job trong một task (khi không bật consensus) | Unique trên `(task_id, item_id)` qua `job_items` |
 | 10 | `annotations.value` đúng cấu trúc `label_schema` | Validate ở backend khi submit |
+| 11 | Annotator, reviewer chỉ vào project qua đội; task chỉ giao cho đội đang gắn với project | Backend |
+| 12 | Không lấy trùng job khi nhiều người lấy việc cùng lúc | `SELECT ... FOR UPDATE SKIP LOCKED` trong transaction |
+| 13 | Một người một vai trò trong một đội | Unique một phần trên `team_members(team_id, user_id)` (`removed_at is null`) |
 
 ---
 
-## 11. Index gợi ý
+## 12. Index gợi ý
 
 - `jobs(project_id, status)`: hàng đợi, backlog, tiến độ.
 - `jobs(assignee_id, status)`: danh sách việc của annotator.
 - `jobs(reviewer_id, status)` và `jobs(status, submitted_at)`: queue review theo
   tuổi.
 - `jobs(task_id)`.
+- `jobs(task_id, status, created_at)`: lấy việc tiếp theo.
+- `team_members(user_id)`, `project_teams(project_id)`, `project_teams(team_id)`.
 - `project_members(user_id)` (lọc quyền ở mọi truy vấn), `project_members(project_id)`.
 - `job_items(item_id)`.
 - `annotations(submission_id)`, `review_errors(review_id)`.
@@ -772,24 +995,27 @@ erDiagram
 
 ---
 
-## 12. Các điểm chưa chốt
+## 13. Các điểm chưa chốt
 
 1. **Consensus**: nếu có, một item nằm trong nhiều job và cần cách gộp kết quả
    (bảng `consensus_results`?). Hiện thiết kế chưa có.
-2. **Trạng thái `unassigned`** cho job chưa có người nhận: thêm vào `jobs.status`
-   hay dùng `assignee_id is null`?
+2. ~~Trạng thái `unassigned`~~: **đã chốt**, thêm vào `jobs.status`.
 3. **Danh mục `reason_code`** dùng chung giữa annotator và reviewer hay tách?
-4. **Phiên đăng nhập**: session phía server (`user_sessions`) hay token có cơ chế
-   thu hồi khác.
+4. ~~Phiên đăng nhập~~: **đã chốt** JWT (access 15 phút + refresh token lưu DB +
+   `token_version`).
 5. **Lưu file lớn** (ảnh, audio, dataset): object storage nào, `payload` chỉ giữ
    đường dẫn.
 6. **Tách `annotations.value` ra bảng theo từng item riêng** nếu sau này thống kê
    theo nhãn nhiều; hiện để jsonb trong `annotations`.
 7. **Phân quyền xem dữ liệu của `hr_admin`**: không có endpoint nào trả về nội dung
-   `items.payload` hay `annotations.value`; cần phản ánh ở lớp API và quyền DB.
+   `items.payload` hay `annotations.value`; đã phản ánh ở `api_design.md` (quy ước chung).
 8. **Co-owner của project**: thêm bằng `project_members` role `owner` hay cột
    riêng.
 9. **Bảng `consensus` và bảng đo lường điểm chất lượng sẵn** (hiện tính bằng view).
+10. ~~Đội có trưởng nhóm không~~: **đã chốt**, có (mục 9.5). Còn mở: có cho trưởng nhóm giao tay job
+    trong đội không (bản đầu: không).
+11. **Một task giao cho nhiều đội?** Hiện mỗi task một đội.
+12. **Reviewer chấm chéo đội?** Hiện reviewer chấm job trong task của đội mình.
 
 ### Phân quyền (RBAC)
 

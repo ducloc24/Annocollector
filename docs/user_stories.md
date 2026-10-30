@@ -22,6 +22,7 @@
 | `RV` | `reviewer` | Platform + project |
 | `AD` | `platform_admin` | Platform |
 | `AU` | `auditor` / project `viewer` | Platform + project |
+| `TL` | Trưởng nhóm (thành viên đội có `is_lead`) | Đội |
 | `ALL` | Mọi người dùng đã đăng nhập | |
 
 **Độ ưu tiên**
@@ -45,16 +46,16 @@
 
 ```mermaid
 flowchart TD
-    HR[HR tạo user,<br/>cấp role platform] --> PO[PO tạo project,<br/>upload dataset,<br/>viết guideline,<br/>cấu hình job]
-    PO --> SYS[Hệ thống cắt task<br/>thành job]
-    SYS --> PM[PM giao job<br/>cho annotator]
-    PM --> AN[Annotator<br/>làm và submit]
-    AN --> RV[Reviewer chấm]
+    HR[HR tạo user,<br/>cấp role platform,<br/>lập đội đánh giá] --> PO[PO tạo project,<br/>chọn đội, upload dataset,<br/>viết guideline,<br/>cấu hình job]
+    PO --> SYS[Hệ thống cắt task<br/>thành job, PO giao<br/>task cho đội]
+    SYS --> AN[Annotator trong đội<br/>lấy việc, làm và submit]
+    AN --> RV[Reviewer trong đội<br/>lấy việc và chấm]
     RV -- reject --> AN
     RV -- accept --> POA[PO nghiệm thu task]
     RV -- escalate --> PM2[PM / PO quyết]
     PM2 --> RV
     POA --> DONE[Task delivered]
+    PM[PM giao tay<br/>khi cần] -.-> AN
     PM -.theo dõi.-> PROG[Tiến độ và chất lượng]
     PO -.theo dõi.-> PROG
 ```
@@ -160,6 +161,43 @@ Là HR, tôi muốn tìm và xem danh sách người dùng cùng trạng thái, 
 - Lọc theo trạng thái, loại hợp đồng, role.
 - Không hiện thông tin về project hay nội dung công việc chi tiết.
 
+### HR-08 Tạo và quản lý đội đánh giá `P0`
+
+Là HR, tôi muốn lập các đội đánh giá, để PO có sẵn đội chọn cho project.
+
+- Tạo đội với mã, tên, mô tả.
+- Đổi tên, mô tả; lưu trữ (`archived`) đội không còn dùng.
+- Không lưu trữ được đội đang gắn với project đang hoạt động.
+- Không cần biết và không thấy đội đang làm project nào.
+- Ghi audit.
+
+### HR-09 Quản lý thành viên đội `P0`
+
+Là HR, tôi muốn thêm, gỡ người và đặt vai trò cho họ trong đội, để đội có đủ người gán
+nhãn và người review.
+
+- Chọn người và vai trò trong đội: `annotator` hoặc `reviewer`. Mỗi người một vai trò
+  trong một đội; một người có thể ở nhiều đội.
+- Người phải có role platform tương ứng; thiếu thì bị từ chối.
+- Nếu thêm người sinh ra xung đột (người đó sẽ vừa là annotator vừa là reviewer ở một
+  project đang dùng đội), hệ thống chặn và báo xung đột mà **không** nêu tên project.
+- Có thể đặt `expires_at`.
+- Gỡ người thì quyền ở các project dùng đội mất ngay; job dở của họ về pool. Bắt buộc
+  nhập lý do.
+- Nếu việc gỡ làm đội đang làm task mất hết annotator hoặc reviewer, hệ thống không chặn
+  mà cảnh báo PM, PO của project và trưởng nhóm.
+- Ghi audit.
+
+### HR-10 Chỉ định trưởng nhóm `P1`
+
+Là HR, tôi muốn chỉ định một thành viên làm trưởng nhóm, để đội có người theo dõi và
+kèm cặp.
+
+- Chọn trong thành viên hiện có của đội; người đó giữ nguyên vai trò annotator hoặc
+  reviewer.
+- Mỗi đội tối đa một trưởng nhóm đang hiệu lực; đổi trưởng nhóm thì bỏ cờ người cũ.
+- Ghi audit.
+
 ---
 
 ## 4. PO: Product Owner
@@ -173,13 +211,15 @@ Là PO, tôi muốn tạo project mới, để bắt đầu một đợt gán nh
 - Project mới ở trạng thái `draft`.
 - Ghi audit.
 
-### PO-02 Quản lý thành viên project `P0`
+### PO-02 Quản lý thành viên quản lý project `P0`
 
-Là PO, tôi muốn thêm và gỡ thành viên project, để đúng người làm đúng việc.
+Là PO, tôi muốn thêm và gỡ người quản lý và người xem của project, để đúng người điều
+phối và theo dõi.
 
+- Thêm trực tiếp vai trò `owner`, `manager`, `viewer`. Annotator và reviewer **không**
+  thêm lẻ mà vào qua đội (PO-17).
 - Chọn người từ danh sách đã được HR cấp role platform tương ứng.
 - Thêm người thiếu role platform cần thiết thì bị từ chối với thông báo rõ.
-- Thêm một người làm cả annotator và reviewer trong cùng project thì bị chặn.
 - Có thể đặt `expires_at` cho membership.
 - Gỡ thành viên thì job đang làm dở của họ quay về pool.
 - Ghi audit.
@@ -246,7 +286,9 @@ hình.
 - Hệ thống tự cắt thành job theo `job rules`; không tạo job thủ công.
 - Hiện kết quả cắt: số job, số item mỗi job, item nào bị bỏ (nếu có).
 - Một item chỉ thuộc một job trong một task (khi chưa bật consensus).
-- Task có trạng thái `draft` đến khi PO kích hoạt.
+- Giao task cho **một đội** đang gắn với project; đổi đội được khi cần.
+- Đặt độ ưu tiên để đội làm task nào trước.
+- Task có trạng thái `draft` đến khi PO kích hoạt; không kích hoạt được khi chưa có đội.
 
 ### PO-09 Kích hoạt, tạm dừng, đóng project `P1`
 
@@ -317,6 +359,19 @@ Là PO, tôi muốn đánh dấu job có đáp án chuẩn, để đo chất lư
 - Gold job được trộn vào hàng đợi, annotator không nhận ra.
 - Chỉ vai trò chấm chất lượng xem được đáp án.
 
+### PO-17 Chọn đội đánh giá cho project `P0`
+
+Là PO, tôi muốn chọn đội nào làm project của mình, để có người gán nhãn và review.
+
+- Xem danh sách đội có sẵn, số người theo vai trò.
+- Gắn một hoặc nhiều đội vào project. Thành viên đội có quyền trong project ngay.
+- Đội phải có ít nhất một annotator và một reviewer; thiếu thì không gắn được.
+- Tỷ lệ reviewer thấp so với tỷ lệ review cấu hình thì hệ thống cảnh báo (không chặn).
+- Nếu gắn đội làm một người vừa là annotator vừa là reviewer trong project (qua hai
+  đội), hệ thống chặn và liệt kê người bị xung đột.
+- Gỡ đội khỏi project; đội còn task đang làm thì phải giao task cho đội khác trước.
+- Ghi audit.
+
 ---
 
 ## 5. PM: Project manager
@@ -328,11 +383,12 @@ Là PM, tôi muốn xem toàn bộ job trong project theo trạng thái, để n
 - Lọc theo trạng thái, task, người làm.
 - Thấy job chưa có người nhận, job đang chờ review, job quá SLA.
 
-### PM-02 Giao job cho annotator `P0`
+### PM-02 Giao tay job cho annotator `P0`
 
-Là PM, tôi muốn giao job cho annotator, để việc được phân công.
+Là PM, tôi muốn giao tay job cho một annotator cụ thể khi cần (ngoại lệ, việc gấp), dù
+thường ngày annotator tự lấy việc.
 
-- Chỉ giao được cho thành viên project có role annotator còn hiệu lực.
+- Chỉ giao được cho annotator thuộc đội của task.
 - Giao hàng loạt nhiều job.
 - Thấy tải hiện tại của từng annotator trước khi giao.
 - Job ghim guideline version và job config version tại lúc giao.
@@ -346,11 +402,11 @@ Là PM, tôi muốn đổi người làm hoặc thu hồi job, để xử lý ng
 - Khi đổi, bài làm dở của người cũ được giữ trong lịch sử.
 - Job có `lease` hết hạn thì tự quay về pool; PM thấy và giao lại.
 
-### PM-04 Phân reviewer cho job `P0`
+### PM-04 Phân tay reviewer cho job `P0`
 
-Là PM, tôi muốn chỉ định reviewer cho job, để việc chấm được phân tải đều.
+Là PM, tôi muốn chỉ định reviewer cho job khi cần, dù thường ngày reviewer tự lấy việc.
 
-- Chỉ chọn được thành viên có role reviewer trong project.
+- Chỉ chọn được reviewer thuộc đội của task.
 - Không chọn được người đã làm job đó.
 - Có thể gán theo lô.
 
@@ -414,13 +470,19 @@ Là annotator, tôi muốn thấy các job được giao, để biết cần là
 - Hiện trạng thái, hạn chót, số item.
 - Job bị reject hiện nổi bật và kèm lý do.
 
-### AN-02 Nhận job `P0`
+### AN-02 Lấy việc tiếp theo `P0`
 
-Là annotator, tôi muốn nhận job được giao, để bắt đầu làm.
+Là annotator, tôi muốn bấm "Lấy việc" để hệ thống đưa tôi job tiếp theo, để không phải
+chờ ai giao.
 
-- Nhận thì job chuyển `in_progress` và bắt đầu tính **lease**.
-- Không nhận được job không phải của mình.
-- Lease hết hạn mà chưa nộp thì job có thể bị thu hồi.
+- Chỉ lấy job trong các task `active` giao cho đội của tôi.
+- Thứ tự: job bị reject của tôi trước, rồi job PM giao tay cho tôi, rồi job mới theo độ
+  ưu tiên của task và tuổi job.
+- Tôi không tự chọn job cụ thể.
+- Đang giữ đủ số job tối đa (WIP limit) thì không lấy thêm được.
+- Lấy được thì job chuyển `in_progress` và bắt đầu tính **lease**. Hết việc thì báo rõ.
+- Lease hết hạn mà chưa nộp thì job trở về pool.
+- Hai người bấm cùng lúc không bao giờ nhận trùng một job.
 
 ### AN-03 Đọc guideline `P0`
 
@@ -505,11 +567,21 @@ Là annotator, tôi chỉ thấy phần dữ liệu cần cho việc của mình
 
 ### RV-01 Xem hàng đợi review `P0`
 
-Là reviewer, tôi muốn xem các job cần chấm, để chọn việc.
+Là reviewer, tôi muốn xem các job mình đang chấm và job PM phân sẵn cho mình.
 
-- Chỉ thấy job được phân cho mình.
+- Chỉ thấy job đang giao cho mình.
 - Sắp theo tuổi job và cờ ưu tiên (job có item `unsure` lên đầu).
 - Không thấy job do chính mình làm.
+
+### RV-09 Lấy job tiếp theo để chấm `P0`
+
+Là reviewer, tôi muốn bấm "Lấy việc" để hệ thống đưa tôi job cần chấm tiếp theo.
+
+- Chỉ lấy job `submitted` trong task giao cho đội của tôi.
+- Thứ tự: job rework mà tôi đã chấm vòng trước, rồi job có item `unsure`, rồi job nộp sớm.
+- Không bao giờ nhận job do chính tôi làm.
+- Đang chấm đủ số job tối đa thì không lấy thêm được.
+- Lấy được thì job chuyển `in_review`.
 
 ### RV-02 Chấm một job `P0`
 
@@ -609,6 +681,38 @@ hỗ trợ gì.
 
 ---
 
+## 8b. TL: Trưởng nhóm
+
+Trưởng nhóm vẫn là annotator hoặc reviewer bình thường (các story AN, RV vẫn áp dụng),
+chỉ có thêm các quyền dưới đây. Trưởng nhóm chỉ xem số liệu tổng hợp, không xem nội dung
+job không được giao cho mình, không xem đáp án gold job, không tự sửa danh sách đội.
+
+### TL-01 Xem tải và tiến độ của đội `P1`
+
+Là trưởng nhóm, tôi muốn thấy mỗi thành viên đang làm bao nhiêu việc ở các project, để
+phát hiện người quá tải hoặc rảnh.
+
+- Số job đang giữ, đã nộp, đã accept, quá hạn của từng thành viên.
+- Chia theo project đội đang làm.
+- Chỉ đội mình; chỉ số liệu.
+
+### TL-02 Xem chất lượng thành viên để coaching `P1`
+
+Là trưởng nhóm, tôi muốn thấy chất lượng của từng thành viên, để kèm cặp người hay lặp lỗi.
+
+- Pass rate, reason code lặp lại, xu hướng theo tuần.
+- Thấy cờ "hiểu sai guideline" khi một người bị reject hai lần cùng một lỗi.
+- Không thấy đáp án gold job.
+
+### TL-03 Nhận cảnh báo của đội `P1`
+
+Là trưởng nhóm, tôi muốn được báo khi đội có vấn đề, để xử lý hoặc đề xuất HR bổ sung người.
+
+- Đội mất hết annotator hoặc reviewer ở một task đang làm.
+- Job kẹt quá SLA, thành viên quá tải.
+
+---
+
 ## 9. AU: Auditor và viewer
 
 ### AU-01 Đọc audit log `P0`
@@ -642,8 +746,8 @@ hình.
 
 | Mức | Số story | Mã |
 | --- | --- | --- |
-| **P0** | 37 | ALL-01, 02; HR-01, 02, 03, 04, 07; PO-01, 02, 04, 05, 06, 07, 08, 10, 12; PM-01, 02, 03, 04, 05, 07; AN-01, 02, 03, 04, 05, 06, 07, 08, 11; RV-01, 02, 03, 04; AD-01; AU-01 |
-| **P1** | 23 | ALL-03; HR-05, 06; PO-03, 09, 11, 13, 14, 15, 16; PM-06, 08, 10; AN-09, 10; RV-05, 06, 08; AD-02, 03, 05; AU-02, 03 |
+| **P0** | 41 | ALL-01, 02; HR-01, 02, 03, 04, 07, 08, 09; PO-01, 02, 04, 05, 06, 07, 08, 10, 12, 17; PM-01, 02, 03, 04, 05, 07; AN-01, 02, 03, 04, 05, 06, 07, 08, 11; RV-01, 09, 02, 03, 04; AD-01; AU-01 |
+| **P1** | 27 | ALL-03; HR-05, 06, 10; PO-03, 09, 11, 13, 14, 15, 16; PM-06, 08, 10; AN-09, 10; RV-05, 06, 08; AD-02, 03, 05; TL-01, 02, 03; AU-02, 03 |
 | **P2** | 3 | PM-09; RV-07; AD-04 |
 
 Lưu ý: số lượng ở bảng trên đếm theo danh sách mã. Nếu thêm hay đổi mức ưu tiên thì cập
@@ -657,8 +761,9 @@ nhật bảng này.
 | --- | --- | --- |
 | 1 | PO có tự cấp role platform `reviewer` cho người của mình không | HR-02, PO-02 |
 | 2 | Có dùng consensus (nhiều annotator một job) không | PO-07, PM-02, RV-02 |
-| 3 | Annotator tự nhận job từ pool hay chỉ PM giao | AN-02, PM-02 |
-| 4 | Reviewer thuộc team QC riêng hay luân chuyển từ annotator senior | RV-01, PM-04 |
+| 3 | ~~Annotator tự nhận job hay PM giao~~ **Đã chốt:** thành viên đội lấy việc (pull), PM giao tay khi cần | AN-02, PM-02, RV-09 |
+| 4 | ~~Reviewer thuộc đội nào~~ **Đã chốt:** đội đánh giá gồm cả annotator và reviewer | HR-09, RV-09 |
+| 9 | ~~Đội có trưởng nhóm không~~ **Đã chốt:** có, chỉ xem số liệu và nhận cảnh báo. Còn mở: trưởng nhóm có được giao tay job trong đội không | HR-10, TL-01 đến TL-03 |
 | 5 | Tiến độ cập nhật realtime hay theo ngày | PO-10, PM-05 |
 | 6 | Thời gian thu hồi quyền khi offboarding (ngay lập tức hay 24h) | HR-04 (hiện đang giả định ngay lập tức) |
 | 7 | Có cho annotator thấy điểm chất lượng của mình không | AN-10 |

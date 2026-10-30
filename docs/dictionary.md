@@ -41,6 +41,15 @@ Thứ bậc: `Project → Task → Job → Item`
 | **Job** | Gói item cố định, thuộc một task, giao cho một annotator làm và được review như một đơn vị. Ghim vào một guideline version và một job config. |
 | **Job config** | Cấu hình do PO đặt, quy định thế nào là một job: số item mỗi job, số annotator, tỷ lệ review, SLA, label schema. Có version, bất biến. |
 | **Pin / ghim** | Gắn một job vào đúng version guideline và job config tại lúc giao, để về sau chấm theo đúng căn cứ lúc làm. |
+| **Đội đánh giá (team)** | Nhóm annotator và reviewer do HR lập. PO chọn đội cho project và giao task cho đội; thành viên đội tự lấy việc trong task của đội. |
+| **Team role** | Vai trò của một người trong một đội: `annotator` hoặc `reviewer`. Mỗi người một vai trò trong một đội. |
+| **Gắn đội (project team)** | Liên kết một đội với một project (`project_teams`); thành viên đội có quyền trong project theo team role. |
+| **Trưởng nhóm (team lead)** | Thành viên đội được HR bật cờ `is_lead`. Vẫn làm việc như annotator hoặc reviewer; thêm quyền xem số liệu tải, tiến độ, chất lượng của đội và nhận cảnh báo. Không xem nội dung job không được giao, không xem đáp án gold, không sửa danh sách đội. |
+| **Push (giao việc)** | Người điều phối (PM) chọn job và giao cho từng người. |
+| **Pull (nhận việc)** | Người làm bấm "lấy việc tiếp theo", hệ thống chọn job cho họ theo quy tắc. Người làm không tự chọn job cụ thể. |
+| **Cherry-picking** | Người làm tự chọn job dễ, bỏ job khó. Lý do không cho annotator duyệt pool để chọn. |
+| **WIP limit** | Số job tối đa một người được giữ đang mở cùng lúc. |
+| **`SKIP LOCKED`** | Cơ chế của Postgres cho nhiều người lấy việc cùng lúc mà không lấy trùng một job. |
 | **Pool** | Hàng đợi job chưa có người làm. Job của người đã nghỉ quay về đây. |
 | **Lease** | Thời hạn một annotator được giữ job (`lease_expires_at`). Hết hạn mà chưa xong thì job có thể bị thu hồi. |
 
@@ -52,6 +61,7 @@ Thứ bậc: `Project → Task → Job → Item`
 | **Round** | Số thứ tự vòng nộp của một job (1, 2, 3...). |
 | **Supersedes** | Quan hệ "thay thế": một review mới (override, re-review) trỏ về review cũ mà nó thay thế, không sửa bản cũ. |
 | **Gold answer** | Đáp án chuẩn của một item trong gold job, dùng để đo chất lượng. Chỉ vai trò chấm chất lượng đọc được. |
+| **Target** | Phần cụ thể trong một item được gán nhãn, ví dụ id của một bước tool call trong trajectory. Nhãn gắn vào cặp `(item_id, target)`; để trống khi nhãn cho cả item. |
 | **Annotation** | Kết quả gán nhãn của annotator cho các item trong một job, lưu dạng `annotation_json`. |
 | **Label** | Nhãn gán cho một item. |
 | **Label schema** | Mô tả (JSON) các trường nhãn: tên, kiểu, bắt buộc hay không, điều kiện hiện. Từ đó dựng form gán nhãn và validate kết quả. |
@@ -147,6 +157,7 @@ review, tiến độ và phân quyền dùng chung.
 
 | Trạng thái | Ý nghĩa |
 | --- | --- |
+| `unassigned` | Trong pool, chưa có người nhận |
 | `assigned` | Đã giao cho annotator, chưa bắt đầu |
 | `in_progress` | Annotator đang làm |
 | `submitted` | Annotator đã nộp (sau self-check) |
@@ -181,6 +192,12 @@ Tiến độ chỉ đếm job `accepted`, không đếm `submitted`.
 | **Auditor** | Đọc audit log và báo cáo tuân thủ. Chỉ đọc. |
 | **Owner / Manager / Viewer** | Project role: toàn quyền trong project / điều phối / chỉ đọc tiến độ và báo cáo. |
 | **Service account** | Tài khoản của bot hoặc cron job, do platform admin tạo, tách khỏi tài khoản người. |
+| **JWT** | Token đăng nhập tự chứa thông tin (user, hạn dùng), có chữ ký. Server kiểm tra chữ ký mà không cần tra DB. |
+| **Access token** | JWT ngắn hạn gửi kèm mỗi request để xác thực. |
+| **Refresh token** | Token dài hạn dùng để xin access token mới; lưu trong DB nên thu hồi được. |
+| **`token_version`** | Số đếm trên user; tăng lên thì mọi access token cũ của user đó mất hiệu lực. |
+| **Xoay vòng refresh token (rotation)** | Mỗi lần refresh cấp token mới và thu hồi token cũ. Các token nối tiếp nhau thuộc một **family**; dùng lại token đã bị thay thế thì thu hồi cả family. |
+| **Action token** | Token dùng một lần gửi qua email để kích hoạt tài khoản hoặc đặt lại mật khẩu (`user_action_tokens`). |
 | **Break-glass** | Truy cập dataset khẩn cấp ngoài quyền thường, bắt buộc có lý do và ghi audit. |
 | **`expires_at`** | Thời điểm quyền hết hiệu lực. Để trống nghĩa là vô thời hạn. |
 | **Onboarding** | HR tạo user và cấp platform role; PO add user vào project. |
@@ -197,6 +214,14 @@ Tiến độ chỉ đếm job `accepted`, không đếm `submitted`.
 | **Cycle time** | Thời gian trung bình từ lúc giao đến khi accepted. |
 | **Stuck** | Job nằm quá SLA ở một trạng thái. Cảnh báo gửi cho PM. |
 | **SLA** | Thời hạn xử lý tối đa cho từng bước (làm, review, nghiệm thu). |
+| **Action endpoint** | Endpoint thực hiện một hành động đổi trạng thái (`POST /jobs/{id}/submit`) thay vì sửa trực tiếp trường `status`. |
+| **`unassigned`** | Trạng thái job trong pool, chưa có người nhận. |
+| **State machine** | Module duy nhất định nghĩa các trạng thái và chuyển hợp lệ của job hoặc task. Mọi đổi trạng thái đi qua đây. |
+| **Permission resolver** | Thành phần backend trả lời "user này có permission này trên project này không", theo đúng thứ tự kiểm tra quyền. |
+| **Seed** | Dữ liệu khởi tạo đưa vào DB qua migration, ví dụ danh mục role, permission và ma trận quyền. |
+| **Storage adapter** | Lớp trung gian lưu và đọc file (ổ đĩa cục bộ, Supabase Storage, S3) để đổi nơi lưu mà không sửa nghiệp vụ. |
+| **Draft (bản nháp)** | Nhãn annotator đang làm dở, tự lưu, chưa nộp. Khác với submission. |
+| **Tác vụ nền (background task)** | Tác vụ chạy định kỳ hoặc ngoài request: trả job hết lease về pool, cảnh báo stuck, parse file lớn. |
 | **Audit log / `audit_events`** | Nhật ký append-only mọi hành động quan trọng: ai, làm gì, trên đối tượng nào, trước và sau, lý do. |
 | **Append-only** | Chỉ thêm bản ghi, không sửa hay xoá. Áp dụng cho audit log, dataset version, guideline version, job config. |
 | **Data classification** | Mức phân loại dữ liệu của project (`internal`, `confidential`, `restricted`). |

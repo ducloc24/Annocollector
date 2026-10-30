@@ -303,3 +303,15 @@ thuộc project không xem được tiến độ.
 | 8 | ~~Job chưa có người nhận~~ | Bước 4, 5 | **Đã chốt:** thêm trạng thái `unassigned` |
 
 Quyết định 1, 4, 8 đã cập nhật vào `database_design.md` và `api_design.md`. Quyết định 6 cần cập nhật khi chốt.
+
+---
+
+## 6. Trạng thái
+
+| Bước | Trạng thái |
+| --- | --- |
+| 0–1 | Xong |
+| 2–7 | Xong;  chạy trọn vòng (HR tạo người và đội, PO thiết lập project, annotator và reviewer làm kèm một vòng reject, PO ký nghiệm thu): 59/59 đạt trên Supabase |
+| 8 (P1) | Chưa làm: khiếu nại, override, gold job, quality, export, trưởng nhóm, tác vụ nền, thông báo |
+
+Ghi chú vận hành: mỗi truy vấn tới Supabase (eu-west-1) mất khoảng 0,5 giây từ Việt Nam, nên mỗi request mất vài giây; đặt project Supabase ở  sẽ cải thiện rõ nhất.

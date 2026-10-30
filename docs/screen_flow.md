@@ -326,3 +326,11 @@ Vẫn dùng `/work` hoặc `/review` như thành viên bình thường.
 2. Màn gán nhãn **không** có phím tắt.
 3. PO dùng **một trang dashboard**: `/projects` hiện các project của PO kèm tiến độ, job kẹt, escalation, task chờ nghiệm thu. Không có trang tổng hợp riêng.
 4. **Không** có chuông thông báo; trang Việc cần làm là đủ.
+
+---
+
+## 8. Trạng thái cài đặt (frontend)
+
+Đã có (): đăng nhập, kích hoạt, Việc cần làm, tài khoản, Gán nhãn và Chấm (hàng đợi + màn làm việc), HR (người dùng, đội, quyền sắp hết hạn, audit), Project (danh sách, tạo, workspace với các tab Tổng quan, Thành viên và đội, Guideline kèm mã lỗi, Dữ liệu kèm wizard upload, Cấu hình job kèm xem trước, Task, Job, Escalation), chi tiết task kèm nghiệm thu.
+
+Chưa có: trang trưởng nhóm (), khiếu nại, export.  và lint sạch; chưa được kiểm thử bằng trình duyệt.

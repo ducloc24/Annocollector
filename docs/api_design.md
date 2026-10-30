@@ -733,3 +733,21 @@ sequenceDiagram
 | 5 | Parse file lớn bằng tác vụ nền | `POST /datasets` trả `202` kèm id để theo dõi thay vì `201` |
 | 6 | Mức phân loại dữ liệu có hạn chế thêm ai được xem không | Thêm điều kiện ở `GET /jobs/{id}` và các endpoint đọc item |
 | 7 | ~~Đội có trưởng nhóm không~~ **Đã chốt:** có, chỉ xem số liệu (3.18). Còn mở: trưởng nhóm giao tay job | Thêm endpoint giao tay trong đội nếu chốt |
+
+---
+
+## 9. Khác biệt giữa thiết kế và bản cài đặt
+
+Bản cài đặt () khác thiết kế ở các điểm sau; OpenAPI tại  là nguồn đúng.
+
+| Chỗ | Thiết kế | Cài đặt |
+| --- | --- | --- |
+| Thu hồi job |  |  |
+| Quyết định escalation |  |  |
+| Đổi người làm |  | Dùng lại  (giao cho người khác là đổi người) |
+| Hàng đợi cá nhân | ,  | : theo từng project, gồm job của tôi, job đang chấm, số job chờ chấm |
+| Upload khi chưa cấu hình R2 | — |  nhận file vào thư mục cục bộ (chỉ dev); URL ký bằng HMAC |
+| Xem item |  | Cùng endpoint trả cả item, guideline đã ghim, label schema, mã lỗi, bản nháp (chỉ người làm) và các vòng (người khác) |
+| Re-review | Mở cho task hoặc danh sách job | Chỉ danh sách job () |
+| Chưa làm | , , các endpoint P1 (khiếu nại, override, gold job, export, trưởng nhóm) | Chưa có |
+| Lấy mẫu review |  < 1 | Chỉ nhận 1.0 (review 100%) |

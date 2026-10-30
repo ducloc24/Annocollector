@@ -393,7 +393,7 @@ def main() -> None:
             409,
             "appeal_exists",
         )
-        ok("reviewer cannot appeal", rev.post(f"/jobs/{target}/appeals", {"reason": "x y z"}), 404)
+        ok("reviewer cannot appeal", rev.post(f"/jobs/{target}/appeals", {"reason": "x y z"}), 403)
         listed = ok("appeals list", po.get(f"/projects/{pid}/appeals"), 200)
         assert any(a["id"] == appeal["id"] for a in listed)
         ok(
